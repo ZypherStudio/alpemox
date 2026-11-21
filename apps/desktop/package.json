@@ -1,0 +1,10 @@
+{
+  "name": "@alpemox/desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Alpemox Creative Suite Native Desktop Shell (Tauri v2)",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  }
+}

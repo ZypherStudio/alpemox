@@ -1,0 +1,14 @@
+{
+  "name": "@opencraft/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "opencraft-mcp": "./bin/opencraft-mcp.mjs",
+    "opencraft-cli": "./bin/opencraft-cli.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "@opencraft/shared": "*",
+    "zod": "^3.24.0"
+  }
+}

@@ -1,0 +1,15 @@
+Alpemox Creative Suite
+Copyright (c) 2026 Alpemox Contributors
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
+
+Trademark Notice:
+The "Alpemox" name, wordmark, domain references (alpemox.com / alpemox.dev),
+and custom Alpemox brand & app SVG logos in apps/studio/src/components/AlpemoxLogos.tsx
+are trademarks of the Alpemox project and are NOT granted for impersonation or
+commercial brand reuse without explicit permission.
+
+Open-Source Reference & Attribution:
+This repository includes a sparse reference copy of ArtCraft (https://github.com/storytold/artcraft)
+under reference/artcraft/, dual-licensed under the MIT License or the Apache License, Version 2.0:
+  Copyright (c) 2026 ArtCraft Team and the ArtCraft contributors.
+  The ArtCraft name, wordmark and logos remain trademarks of the ArtCraft Team.

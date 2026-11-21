@@ -1,0 +1,16 @@
+{
+  "name": "Alpemox Creative Suite",
+  "short_name": "Alpemox",
+  "start_url": "/?page=launcher",
+  "display": "standalone",
+  "background_color": "#0b0b0c",
+  "theme_color": "#4e7bfb",
+  "description": "Açık kaynak 2D/3D/Vektör/Video ve AI Yaratıcı Stüdyo Paketi",
+  "icons": [
+    {
+      "src": "/alpemox-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
