@@ -16,6 +16,7 @@ export function MoodboardEditor() {
   const updateMoodboardItem = useStudioStore((s) => s.updateMoodboardItem);
   const deleteMoodboardItem = useStudioStore((s) => s.deleteMoodboardItem);
   const setCraftField = useStudioStore((s) => s.setCraftField);
+  const setBrushColor = useStudioStore((s) => s.setBrushColor);
   const add2DLayer = useStudioStore((s) => s.add2DLayer);
   const add3DObject = useStudioStore((s) => s.add3DObject);
   const lastCraftOutput = useStudioStore((s) => s.lastCraftOutput);
@@ -23,6 +24,7 @@ export function MoodboardEditor() {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const offsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
   const items = project.moodboard || [];
@@ -57,6 +59,11 @@ export function MoodboardEditor() {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
+          {copiedHex && (
+            <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+              {copiedHex} Fırçaya & Panoya Alındı
+            </span>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1 rounded bg-sky-600/20 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-600/35"
@@ -127,6 +134,25 @@ export function MoodboardEditor() {
 
       <div
         ref={boardRef}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const file = e.dataTransfer?.files?.[0];
+          if (!file || !file.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            addMoodboardItem({
+              kind: 'image',
+              title: file.name,
+              imageUrl: String(reader.result),
+              x: 80 + (items.length % 4) * 60,
+              y: 80 + (items.length % 3) * 60,
+              width: 260,
+              height: 220,
+            });
+          };
+          reader.readAsDataURL(file);
+        }}
         onPointerMove={(e) => {
           if (!draggingId || !boardRef.current) return;
           const rect = boardRef.current.getBoundingClientRect();
@@ -202,7 +228,20 @@ export function MoodboardEditor() {
                 </div>
                 <div className="flex justify-between font-mono text-[9px] text-slate-400">
                   {(item.colors || []).map((c, idx) => (
-                    <span key={idx}>{c}</span>
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setBrushColor(c);
+                        void navigator.clipboard?.writeText(c);
+                        setCopiedHex(c);
+                        setTimeout(() => setCopiedHex(null), 1600);
+                      }}
+                      title="Kopyala ve Fırça Rengi Yap"
+                      className="rounded px-1 hover:bg-slate-800 hover:text-sky-300"
+                    >
+                      {c}
+                    </button>
                   ))}
                 </div>
               </div>

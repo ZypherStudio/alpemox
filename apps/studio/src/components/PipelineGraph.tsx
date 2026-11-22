@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Play, Workflow, Plus, Trash2, Download, Upload, Link2 } from 'lucide-react';
-import { MODEL_CATALOG, type PipelineNodeType } from '@opencraft/shared';
+import { Play, Workflow, Plus, Trash2, Download, Upload, Link2, LayoutGrid } from 'lucide-react';
+import { MODEL_CATALOG, type PipelineNode, type PipelineEdge, type PipelineNodeType } from '@opencraft/shared';
 import { useStudioStore } from '../store/useStudioStore';
 
 const NODE_COLORS: Record<string, string> = {
@@ -84,6 +84,62 @@ export function PipelineGraph() {
     { type: 'audio', label: 'Alpemox Sound Synth', cfg: { preset: 'cyber-pulse' } },
   ];
 
+  const loadTemplateFlow = (tpl: 'depth3d' | 'batch4x' | 'inpaint2d') => {
+    if (tpl === 'depth3d') {
+      const nodes: PipelineNode[] = [
+        { id: 'n-p', type: 'prompt', label: 'Prompt & Yönetmen', x: 36, y: 60, config: { prompt: 'Cyberpunk character portrait, cinematic neon rim light' } },
+        { id: 'n-3d', type: 'stage3d', label: '3D Sahne (RGB + Depth)', x: 36, y: 260, config: { captureMode: 'rgb+depth' } },
+        { id: 'n-cn', type: 'controlnet', label: 'Depth & Pose Rehberi', x: 340, y: 170, config: { weight: 0.8 } },
+        { id: 'n-m', type: 'model', label: 'AI Motoru', x: 640, y: 150, config: { provider: 'pollinations', modelId: 'pollinations-flux', batchCount: 1 } },
+        { id: 'n-out', type: 'output', label: '2D Katmana Aktar', x: 940, y: 170, config: { autoAddLayer: true } },
+      ];
+      const edges: PipelineEdge[] = [
+        { id: 'te1', from: 'n-p', fromPort: 'prompt', to: 'n-m', toPort: 'prompt' },
+        { id: 'te2', from: 'n-3d', fromPort: 'depth', to: 'n-cn', toPort: 'depth' },
+        { id: 'te3', from: 'n-cn', fromPort: 'guide', to: 'n-m', toPort: 'control' },
+        { id: 'te4', from: 'n-m', fromPort: 'result', to: 'n-out', toPort: 'input' },
+      ];
+      importPipelineFlow(nodes, edges);
+    } else if (tpl === 'batch4x') {
+      const nodes: PipelineNode[] = [
+        { id: 'n-p', type: 'prompt', label: 'Konsept Prompt', x: 40, y: 120, config: { prompt: 'Minimalist futuristic studio product design, dark glass' } },
+        { id: 'n-m', type: 'model', label: 'Batch 4x Üretim', x: 340, y: 120, config: { provider: 'pollinations', modelId: 'pollinations-flux', batchCount: 4 } },
+        { id: 'n-up', type: 'upscale', label: 'Upscale (1.5x)', x: 640, y: 120, config: { factor: 1.5 } },
+        { id: 'n-out', type: 'output', label: '2D Katmana Aktar', x: 940, y: 120, config: { autoAddLayer: true } },
+      ];
+      const edges: PipelineEdge[] = [
+        { id: 'be1', from: 'n-p', fromPort: 'prompt', to: 'n-m', toPort: 'prompt' },
+        { id: 'be2', from: 'n-m', fromPort: 'result', to: 'n-up', toPort: 'input' },
+        { id: 'be3', from: 'n-up', fromPort: 'result', to: 'n-out', toPort: 'input' },
+      ];
+      importPipelineFlow(nodes, edges);
+    } else {
+      const nodes: PipelineNode[] = [
+        { id: 'n-p', type: 'prompt', label: 'Inpaint Prompt', x: 40, y: 60, config: { prompt: 'Replace background with rainy Tokyo night street' } },
+        { id: 'n-2d', type: 'canvas2d', label: '2D Kanvas + Maske', x: 40, y: 250, config: { useMask: true } },
+        { id: 'n-lora', type: 'lora', label: 'LoRA Stili', x: 340, y: 250, config: { loraName: comfyLoras[0] || 'detail.safetensors', strength: 0.75 } },
+        { id: 'n-m', type: 'model', label: 'AI Inpaint Motoru', x: 640, y: 150, config: { provider: 'pollinations', modelId: 'pollinations-flux', batchCount: 1 } },
+        { id: 'n-out', type: 'output', label: '2D Katmana Aktar', x: 940, y: 170, config: { autoAddLayer: true } },
+      ];
+      const edges: PipelineEdge[] = [
+        { id: 'ie1', from: 'n-p', fromPort: 'prompt', to: 'n-m', toPort: 'prompt' },
+        { id: 'ie2', from: 'n-2d', fromPort: 'image', to: 'n-m', toPort: 'image' },
+        { id: 'ie3', from: 'n-lora', fromPort: 'lora', to: 'n-m', toPort: 'lora' },
+        { id: 'ie4', from: 'n-m', fromPort: 'result', to: 'n-out', toPort: 'input' },
+      ];
+      importPipelineFlow(nodes, edges);
+    }
+  };
+
+  const autoArrangeNodes = () => {
+    const arranged = project.pipelineNodes.map((n, idx) => ({
+      ...n,
+      x: 40 + (idx % 4) * 290,
+      y: 50 + Math.floor(idx / 4) * 210,
+    }));
+    importPipelineFlow(arranged, project.pipelineEdges);
+  };
+
   return (
     <div className="flex h-full w-full flex-col bg-[#090b10]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-[#111521] px-3 py-1.5 text-xs">
@@ -104,7 +160,32 @@ export function PipelineGraph() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="hidden items-center gap-1 xl:flex">
+            {(
+              [
+                ['depth3d', 'Şablon: 3D Depth'],
+                ['batch4x', '4x Varyasyon'],
+                ['inpaint2d', '2D Maske'],
+              ] as const
+            ).map(([tpl, label]) => (
+              <button
+                key={tpl}
+                onClick={() => loadTemplateFlow(tpl)}
+                className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] text-slate-300 hover:border-violet-400"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={autoArrangeNodes}
+            title="Düğümleri ızgaraya düzenli hizala"
+            className="flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
+          >
+            <LayoutGrid className="h-3 w-3" />
+            Oto Diz
+          </button>
           {connectFromId && (
             <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300">
               Hedef düğümün Giriş (+) ikonuna tıkla
@@ -160,7 +241,8 @@ export function PipelineGraph() {
                 fill="none"
                 stroke="#38bdf8"
                 strokeWidth="2.5"
-                strokeOpacity="0.65"
+                strokeDasharray={isCrafting ? '8 6' : undefined}
+                strokeOpacity="0.72"
                 onClick={() => deletePipelineEdge(edge.id)}
                 className="cursor-pointer hover:stroke-rose-400"
               />

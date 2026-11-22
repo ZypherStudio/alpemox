@@ -622,6 +622,21 @@ export function FilmEditor() {
           </select>
 
           <button
+            onClick={() => {
+              const c = playerCanvasRef.current;
+              if (!c) return;
+              const a = document.createElement('a');
+              a.href = c.toDataURL('image/png');
+              a.download = `${project.id}-frame-${currentTime.toFixed(1)}s.png`;
+              a.click();
+            }}
+            title="Geçerli video karesini PNG olarak indir"
+            className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
+          >
+            Kare PNG
+          </button>
+
+          <button
             onClick={exportWebmVideo}
             disabled={recording}
             className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"

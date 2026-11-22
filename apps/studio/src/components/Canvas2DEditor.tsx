@@ -173,11 +173,15 @@ export function Canvas2DEditor() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) handleRedo();
         else handleUndo();
+      } else if (e.key === '[' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        setBrushSize(Math.max(2, brushSize - 4));
+      } else if (e.key === ']' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        setBrushSize(Math.min(64, brushSize + 4));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [brushSize, setBrushSize]);
 
   useEffect(() => {
     const box = viewportBoxRef.current;
@@ -688,6 +692,31 @@ export function Canvas2DEditor() {
     img.src = layer.dataUrl;
   };
 
+  const invertSelectedLayerColors = () => {
+    const layer = project.layers2d.find((l) => l.id === selectedLayerId);
+    if (!layer?.dataUrl) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const off = document.createElement('canvas');
+      off.width = img.width;
+      off.height = img.height;
+      const ctx = off.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, off.width, off.height);
+      const d = data.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = 255 - d[i];
+        d[i + 1] = 255 - d[i + 1];
+        d[i + 2] = 255 - d[i + 2];
+      }
+      ctx.putImageData(data, 0, 0);
+      update2DLayer(layer.id, { dataUrl: off.toDataURL('image/png') });
+    };
+    img.src = layer.dataUrl;
+  };
+
   const duplicateSelectedLayer = () => {
     const sel = project.layers2d.find((l) => l.id === selectedLayerId);
     if (!sel) return;
@@ -878,6 +907,30 @@ export function Canvas2DEditor() {
               >
                 <Copy className="h-3 w-3" />
               </button>
+              <button
+                onClick={() =>
+                  update2DLayer(selectedLayer.id, {
+                    x: 0,
+                    y: 0,
+                    width: project.canvasWidth,
+                    height: project.canvasHeight,
+                    rotation: 0,
+                  })
+                }
+                title="Seçili katmanı tuvale tam sığdır"
+                className="rounded bg-slate-800 px-1.5 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
+              >
+                Sığdır
+              </button>
+              {selectedLayer.dataUrl && (
+                <button
+                  onClick={invertSelectedLayerColors}
+                  title="Katman renklerini ters çevir (Negatif)"
+                  className="rounded bg-slate-800 px-1.5 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
+                >
+                  Negatif
+                </button>
+              )}
               <button
                 onClick={flattenVisibleLayers}
                 title="Görünür katmanları yeni katmanda birleştir (Merge)"
