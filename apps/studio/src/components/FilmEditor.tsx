@@ -88,17 +88,18 @@ export function FilmEditor() {
   const splitStoryboardShot = useStudioStore((s) => s.splitStoryboardShot);
   const moveStoryboardShot = useStudioStore((s) => s.moveStoryboardShot);
   const addAudioClip = useStudioStore((s) => s.addAudioClip);
+  const updateAudioClip = useStudioStore((s) => s.updateAudioClip);
   const deleteAudioClip = useStudioStore((s) => s.deleteAudioClip);
   const exportCanvasFn = useStudioStore((s) => s.exportCanvasFn);
   const add2DLayer = useStudioStore((s) => s.add2DLayer);
   const lastCraftOutput = useStudioStore((s) => s.lastCraftOutput);
   const prompt = useStudioStore((s) => s.prompt);
-  const license = useStudioStore((s) => s.license);
   const setPricingOpen = useStudioStore((s) => s.setPricingOpen);
 
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
   const [autoFillBusy, setAutoFillBusy] = useState(false);
+  const [synthPreset, setSynthPreset] = useState<NonNullable<AudioClip['preset']>>('cyber-pulse');
   const [exportRes, setExportRes] = useState<'720p' | '1080p' | '4k'>('1080p');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [currentTime, setCurrentTime] = useState(0);
@@ -144,8 +145,20 @@ export function FilmEditor() {
       stopAudioRef.current = null;
       return;
     }
-    if (audioClips.length > 0 && audioClips[0].kind === 'synth') {
-      stopAudioRef.current = playSynthTrack(audioClips[0].preset, totalDuration, audioClips[0].volume);
+    if (audioClips.length > 0) {
+      const clip = audioClips[0];
+      if (clip.kind === 'synth') {
+        stopAudioRef.current = playSynthTrack(clip.preset, totalDuration, clip.volume);
+      } else if (clip.kind === 'upload' && clip.dataUrl) {
+        const audio = new Audio(clip.dataUrl);
+        audio.volume = Math.max(0, Math.min(1, clip.volume ?? 0.8));
+        audio.currentTime = currentTime;
+        void audio.play().catch(() => {});
+        stopAudioRef.current = () => {
+          audio.pause();
+          audio.src = '';
+        };
+      }
     }
     let last = performance.now();
     let raf = 0;
@@ -514,21 +527,34 @@ export function FilmEditor() {
             Kare Ekle
           </button>
 
-          <button
-            onClick={() =>
-              addAudioClip({
-                name: 'Cyber Pulse Synth',
-                kind: 'synth',
-                preset: 'cyber-pulse',
-                durationSec: Math.round(totalDuration),
-                volume: 0.65,
-              })
-            }
-            className="flex items-center gap-1 rounded bg-violet-600/20 px-2.5 py-1 text-[11px] font-medium text-violet-300 hover:bg-violet-600/35"
-          >
-            <Music className="h-3.5 w-3.5" />
-            + AI Synth Ses
-          </button>
+          <div className="flex items-center overflow-hidden rounded border border-violet-500/30 bg-violet-600/15">
+            <select
+              value={synthPreset}
+              onChange={(e) => setSynthPreset(e.target.value as NonNullable<AudioClip['preset']>)}
+              aria-label="Synth Ses Önayarları"
+              className="bg-transparent px-1.5 py-1 text-[10px] text-violet-200 focus:outline-none"
+            >
+              <option value="cyber-pulse" className="bg-slate-900">Cyber Pulse</option>
+              <option value="ambient-drone" className="bg-slate-900">Ambient Drone</option>
+              <option value="cinematic-riser" className="bg-slate-900">Cinematic Riser</option>
+              <option value="lofi-beat" className="bg-slate-900">Lo-Fi Beat</option>
+            </select>
+            <button
+              onClick={() =>
+                addAudioClip({
+                  name: synthPreset === 'cyber-pulse' ? 'Cyber Pulse Synth' : synthPreset === 'ambient-drone' ? 'Ambient Drone' : synthPreset === 'cinematic-riser' ? 'Cinematic Riser' : 'Lo-Fi Beat',
+                  kind: 'synth',
+                  preset: synthPreset,
+                  durationSec: Math.round(totalDuration),
+                  volume: 0.65,
+                })
+              }
+              className="flex items-center gap-1 bg-violet-600/30 px-2 py-1 text-[11px] font-medium text-violet-200 hover:bg-violet-600/50"
+            >
+              <Music className="h-3.5 w-3.5" />
+              + AI Synth Ses
+            </button>
+          </div>
 
           <button
             onClick={() => audioUploadRef.current?.click()}
@@ -674,8 +700,27 @@ export function FilmEditor() {
                   key={clip.id}
                   className="flex items-center gap-2 rounded border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[10px] text-violet-200"
                 >
-                  <Music className="h-3 w-3" />
+                  <Music className="h-3 w-3 shrink-0" />
                   <span>{clip.name}</span>
+                  <div className="flex h-3 items-end gap-[2px]">
+                    {[45, 85, 60, 95, 50, 78, 40, 88].map((h, idx) => (
+                      <span
+                        key={idx}
+                        style={{ height: `${h}%` }}
+                        className="w-[2px] rounded-full bg-violet-400/75"
+                      />
+                    ))}
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    title={`Ses seviyesi: ${Math.round((clip.volume ?? 0.7) * 100)}%`}
+                    value={clip.volume ?? 0.7}
+                    onChange={(e) => updateAudioClip(clip.id, { volume: Number(e.target.value) })}
+                    className="w-12 accent-violet-400"
+                  />
                   <button
                     onClick={() => deleteAudioClip(clip.id)}
                     className="text-violet-300 hover:text-rose-400"
@@ -836,6 +881,35 @@ export function FilmEditor() {
                 className="w-12 rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-slate-100"
               />
             </label>
+            <label className="flex items-center gap-1 text-slate-400">
+              Pan X
+              <input
+                type="range"
+                min={-120}
+                max={120}
+                value={selectedShot.panX ?? 0}
+                onChange={(e) => updateStoryboardShot(selectedShot.id, { panX: Number(e.target.value) })}
+                className="w-12 accent-emerald-400"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-slate-400">
+              Açı
+              <input
+                type="range"
+                min={-25}
+                max={25}
+                value={selectedShot.rotateDeg ?? 0}
+                onChange={(e) => updateStoryboardShot(selectedShot.id, { rotateDeg: Number(e.target.value) })}
+                className="w-12 accent-emerald-400"
+              />
+            </label>
+            <input
+              type="color"
+              title="Altyazı Rengi"
+              value={selectedShot.overlayColor || '#ffffff'}
+              onChange={(e) => updateStoryboardShot(selectedShot.id, { overlayColor: e.target.value })}
+              className="h-5 w-5 cursor-pointer rounded border border-slate-700 bg-transparent"
+            />
             <select
               value={selectedShot.overlayPosition || 'bottom'}
               onChange={(e) =>

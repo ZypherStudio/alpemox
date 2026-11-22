@@ -170,6 +170,7 @@ interface StudioState {
   addVector: (partial: Partial<VectorElement>) => void;
   updateVector: (id: string, patch: Partial<VectorElement>) => void;
   deleteVector: (id: string) => void;
+  bringVectorToFront: (id: string) => void;
 
   // Film & Audio
   addStoryboardShot: (shot: { title: string; prompt: string; imageUrl?: string; cameraNote?: string }) => void;
@@ -852,6 +853,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       project: next,
       selectedVectorId: get().selectedVectorId === id ? remaining[0]?.id || null : get().selectedVectorId,
     });
+    scheduleSave(next);
+  },
+
+  bringVectorToFront: (id) => {
+    const all = get().project.vectors || [];
+    const target = all.find((v) => v.id === id);
+    if (!target) return;
+    const next = {
+      ...get().project,
+      vectors: [...all.filter((v) => v.id !== id), target],
+    };
+    set({ project: next });
     scheduleSave(next);
   },
 

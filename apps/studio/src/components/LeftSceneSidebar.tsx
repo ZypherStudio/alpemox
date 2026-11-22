@@ -411,6 +411,33 @@ export function LeftSceneSidebar() {
                     setCamera3DOrbit(rot, tilt, camDist);
                   }}
                 />
+                <div className="mt-1 flex flex-wrap justify-center gap-1 px-1 pb-1">
+                  {(
+                    [
+                      ['Ön 0°', 0, 0],
+                      ['45°', 45, 30],
+                      ['Yan 90°', 90, 0],
+                      ['Arka 180°', 180, 0],
+                      ['Üst 60°', 0, 60],
+                    ] as const
+                  ).map(([lbl, r, t]) => (
+                    <button
+                      key={lbl}
+                      onClick={() => {
+                        setCamRot(r);
+                        setCamTilt(t);
+                        setCamera3DOrbit(r, t, camDist);
+                      }}
+                      className={`rounded px-1.5 py-0.5 text-[9px] ${
+                        camRot === r && camTilt === t
+                          ? 'bg-sky-500 font-semibold text-slate-950'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label className="flex items-center justify-between text-slate-400">
                 <span>Mesafe</span>

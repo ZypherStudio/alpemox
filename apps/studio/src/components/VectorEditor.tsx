@@ -67,6 +67,7 @@ export function VectorEditor() {
   const addVector = useStudioStore((s) => s.addVector);
   const updateVector = useStudioStore((s) => s.updateVector);
   const deleteVector = useStudioStore((s) => s.deleteVector);
+  const bringVectorToFront = useStudioStore((s) => s.bringVectorToFront);
   const add2DLayer = useStudioStore((s) => s.add2DLayer);
   const projectVectorTo3DExtrude = useStudioStore((s) => s.projectVectorTo3DExtrude);
   const setViewportMode = useStudioStore((s) => s.setViewportMode);
@@ -503,6 +504,35 @@ export function VectorEditor() {
                   />
                 </label>
               )}
+              <label className="flex items-center gap-0.5 text-[10px] text-slate-400">
+                G
+                <input
+                  type="number"
+                  min={8}
+                  max={1024}
+                  value={Math.round(selected.width)}
+                  onChange={(e) => updateVector(selected.id, { width: Math.max(8, Number(e.target.value)) })}
+                  className="w-12 rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-slate-200"
+                />
+              </label>
+              <label className="flex items-center gap-0.5 text-[10px] text-slate-400">
+                Y
+                <input
+                  type="number"
+                  min={4}
+                  max={1024}
+                  value={Math.round(selected.height)}
+                  onChange={(e) => updateVector(selected.id, { height: Math.max(4, Number(e.target.value)) })}
+                  className="w-12 rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-slate-200"
+                />
+              </label>
+              <button
+                onClick={() => bringVectorToFront(selected.id)}
+                title="Öne Al (En Üst Katman)"
+                className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
+              >
+                Öne Al
+              </button>
               <button
                 onClick={() => duplicateSelected(selected)}
                 title="Çoğalt"

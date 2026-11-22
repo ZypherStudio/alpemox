@@ -1079,6 +1079,7 @@ export function Canvas2DEditor() {
             className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] text-slate-200"
           >
             <option value="1024x1024">1:1 (1024)</option>
+            <option value="819x1024">4:5 (819×1024)</option>
             <option value="1280x720">16:9 (1280×720)</option>
             <option value="720x1280">9:16 (720×1280)</option>
           </select>
@@ -1180,6 +1181,36 @@ export function Canvas2DEditor() {
             +
           </button>
         </div>
+
+        {selectedLayer?.kind === 'text' && (
+          <div className="absolute bottom-2.5 left-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/95 px-2.5 py-1.5 text-[11px] shadow-xl backdrop-blur">
+            <span className="font-semibold text-sky-300">Metin:</span>
+            <input
+              type="text"
+              value={selectedLayer.textContent || ''}
+              onChange={(e) => update2DLayer(selectedLayer.id, { textContent: e.target.value })}
+              className="w-40 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-slate-100"
+            />
+            <label className="flex items-center gap-1 text-slate-400">
+              Punto
+              <input
+                type="number"
+                min={12}
+                max={140}
+                value={selectedLayer.fontSize || 34}
+                onChange={(e) => update2DLayer(selectedLayer.id, { fontSize: Number(e.target.value) })}
+                className="w-12 rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-slate-100"
+              />
+            </label>
+            <input
+              type="color"
+              value={selectedLayer.fillColor || '#f8fafc'}
+              onChange={(e) => update2DLayer(selectedLayer.id, { fillColor: e.target.value })}
+              title="Metin Rengi"
+              className="h-5 w-6 cursor-pointer rounded border border-slate-700 bg-transparent"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
