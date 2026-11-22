@@ -204,11 +204,11 @@ export class ProviderHub {
           `https://text.pollinations.ai/${encodeURIComponent(
             `Rewrite into a vivid 50-word cinematic visual generation prompt with lighting, lens, and texture details: ${basePrompt}`,
           )}`,
-          { signal: AbortSignal.timeout(12000) },
+          { signal: AbortSignal.timeout(2500) },
         );
         if (res.ok) {
           const text = (await res.text()).trim();
-          if (text) {
+          if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('payment')) {
             return {
               id: `craft-${crypto.randomUUID().slice(0, 8)}`,
               workflow: 'prompt-enhance',
@@ -287,25 +287,49 @@ export class ProviderHub {
     const promptText = encodeURIComponent(req.prompt || 'Cinematic futuristic creative studio artwork');
     const url = `https://image.pollinations.ai/prompt/${promptText}?width=${width}&height=${height}&seed=${req.seed}&model=${model}&nologo=true`;
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(45000) });
-    if (!res.ok) {
-      throw new Error(`Açık kaynak AI uç noktası yanıt vermedi (${res.status}). Çevrimdışı Önizleme veya yerel ComfyUI seçebilirsiniz.`);
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || 'image/jpeg';
+        const arrBuf = await res.arrayBuffer();
+        if (contentType.startsWith('image/') && arrBuf.byteLength > 2000) {
+          const dataUrl = `data:${contentType};base64,${Buffer.from(arrBuf).toString('base64')}`;
+          return {
+            id: `craft-${crypto.randomUUID().slice(0, 8)}`,
+            workflow: req.workflow,
+            provider: 'pollinations',
+            modelId: req.modelId,
+            prompt: req.prompt,
+            seed: req.seed,
+            width,
+            height,
+            imageUrl: dataUrl,
+            createdAt: new Date().toISOString(),
+            note: `Açık kaynak ${model.toUpperCase()} motoru ile canlı üretildi.`,
+          };
+        }
+      }
+    } catch {
+      // External free endpoint unavailable or rate-limited; cascade automatically below
     }
-    const contentType = res.headers.get('content-type') || 'image/jpeg';
-    const arrBuf = await res.arrayBuffer();
-    const dataUrl = `data:${contentType};base64,${Buffer.from(arrBuf).toString('base64')}`;
+
+    // Automatic fallback cascade: Local ComfyUI -> Local A1111 -> HuggingFace -> Built-in Alpemox Engine
+    const comfy = await this.discoverComfyUIModels();
+    if (comfy.reachable) {
+      return this.runComfyUI({ ...req, provider: 'comfyui' });
+    }
+    const a1111 = await this.discoverA1111();
+    if (a1111.reachable) {
+      return this.runA1111({ ...req, provider: 'a1111' });
+    }
+    if (this.config.huggingfaceToken) {
+      return this.runHuggingFace({ ...req, provider: 'huggingface' });
+    }
+
+    const localOut = await this.runProceduralPreview({ ...req, width, height });
     return {
-      id: `craft-${crypto.randomUUID().slice(0, 8)}`,
-      workflow: req.workflow,
-      provider: 'pollinations',
-      modelId: req.modelId,
-      prompt: req.prompt,
-      seed: req.seed,
-      width,
-      height,
-      imageUrl: dataUrl,
-      createdAt: new Date().toISOString(),
-      note: `Açık kaynak ${model.toUpperCase()} motoru ile canlı üretildi.`,
+      ...localOut,
+      note: 'Harici ücretsiz Pollinations ucu şu an 402/limit verdiği için Alpemox yerleşik motoruyla üretildi. Gerçek difüzyon görseli için AI Ayarları’ndan yerel ComfyUI / A1111 veya HuggingFace / API anahtarı bağlayabilirsiniz.',
     };
   }
 

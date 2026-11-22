@@ -113,7 +113,12 @@ export function CraftInspector() {
             <label className="text-[11px] font-medium text-slate-400">Sahne Promptu</label>
             <button
               onClick={() => {
-                setCraftField({ craftWorkflow: 'prompt-enhance', craftModelId: 'pollinations-turbo', craftProvider: 'pollinations' });
+                setCraftField({
+                  craftWorkflow: 'prompt-enhance',
+                  craftModelId: 'procedural-studio-preview',
+                  craftProvider: 'procedural',
+                });
+                void runCraft();
               }}
               className="flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300"
             >
