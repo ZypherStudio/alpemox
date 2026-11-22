@@ -14,8 +14,10 @@ function buildMannequinGroup(obj: StageObject3D): THREE.Group {
   const root = new THREE.Group();
   const baseMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(obj.color || '#60a5fa'),
-    roughness: 0.42,
-    metalness: 0.15,
+    roughness: obj.roughness ?? 0.42,
+    metalness: obj.metalness ?? 0.15,
+    emissive: new THREE.Color((obj.emissiveIntensity ?? 0) > 0 ? obj.color || '#60a5fa' : '#000000'),
+    emissiveIntensity: obj.emissiveIntensity ?? 0,
   });
   const jointMat = new THREE.MeshStandardMaterial({
     color: 0xe2e8f0,
@@ -185,6 +187,8 @@ export function Stage3DViewport() {
   } | null>(null);
   const depthMatRef = useRef<THREE.MeshDepthMaterial | null>(null);
   const normalMatRef = useRef<THREE.MeshNormalMaterial | null>(null);
+  const isGizmoDraggingRef = useRef(false);
+  const boxHelperRef = useRef<THREE.BoxHelper | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
 
   const project = useStudioStore((s) => s.project);
@@ -239,30 +243,37 @@ export function Stage3DViewport() {
 
     // 3D TransformControls Gizmo
     const tControls = new TransformControls(camera, renderer.domElement);
+    tControls.setSize(1.25);
     tControls.addEventListener('dragging-changed', (ev) => {
-      controls.enabled = !ev.value;
+      const dragging = Boolean(ev.value);
+      isGizmoDraggingRef.current = dragging;
+      controls.enabled = !dragging;
+      if (!dragging) {
+        const attached = tControls.object;
+        const objId = attached?.userData?.objectId as string | undefined;
+        if (attached && objId) {
+          update3DObject(objId, {
+            position: {
+              x: +attached.position.x.toFixed(2),
+              y: +attached.position.y.toFixed(2),
+              z: +attached.position.z.toFixed(2),
+            },
+            rotation: {
+              x: +attached.rotation.x.toFixed(2),
+              y: +attached.rotation.y.toFixed(2),
+              z: +attached.rotation.z.toFixed(2),
+            },
+            scale: {
+              x: +attached.scale.x.toFixed(2),
+              y: +attached.scale.y.toFixed(2),
+              z: +attached.scale.z.toFixed(2),
+            },
+          });
+        }
+      }
     });
     tControls.addEventListener('objectChange', () => {
-      const attached = tControls.object;
-      const objId = attached?.userData?.objectId as string | undefined;
-      if (!attached || !objId) return;
-      update3DObject(objId, {
-        position: {
-          x: +attached.position.x.toFixed(2),
-          y: +attached.position.y.toFixed(2),
-          z: +attached.position.z.toFixed(2),
-        },
-        rotation: {
-          x: +attached.rotation.x.toFixed(2),
-          y: +attached.rotation.y.toFixed(2),
-          z: +attached.rotation.z.toFixed(2),
-        },
-        scale: {
-          x: +attached.scale.x.toFixed(2),
-          y: +attached.scale.y.toFixed(2),
-          z: +attached.scale.z.toFixed(2),
-        },
-      });
+      boxHelperRef.current?.update();
     });
     scene.add(tControls.getHelper());
     transformRef.current = tControls;
@@ -307,6 +318,7 @@ export function Stage3DViewport() {
       downY = e.clientY;
     };
     const onUp = (e: PointerEvent) => {
+      if (isGizmoDraggingRef.current || tControls.axis !== null) return;
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -491,12 +503,14 @@ export function Stage3DViewport() {
     }
   }, [stageRenderMode, project.stageLighting?.bgColor]);
 
-  // Rebuild dynamic objects
+  // Rebuild dynamic objects (never rebuild mid-gizmo-drag!)
   useEffect(() => {
+    if (isGizmoDraggingRef.current) return;
     const group = dynamicGroupRef.current;
     const tControls = transformRef.current;
     if (!group) return;
     if (tControls) tControls.detach();
+    boxHelperRef.current = null;
     while (group.children.length > 0) {
       group.remove(group.children[0]);
     }
@@ -564,7 +578,9 @@ export function Stage3DViewport() {
       objectNodesRef.current.set(obj.id, node);
 
       if (obj.id === selectedObject3DId) {
-        group.add(new THREE.BoxHelper(node, 0x38bdf8));
+        const helper = new THREE.BoxHelper(node, 0x38bdf8);
+        boxHelperRef.current = helper;
+        group.add(helper);
         if (tControls) tControls.attach(node);
       }
     }
