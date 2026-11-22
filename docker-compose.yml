@@ -1,0 +1,14 @@
+services:
+  alpemox:
+    build: .
+    container_name: alpemox-suite
+    ports:
+      - "4310:4310"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=4310
+      - COMFYUI_URL=http://host.docker.internal:8188
+      - A1111_URL=http://host.docker.internal:7860
+      - OLLAMA_URL=http://host.docker.internal:11434
+    restart: unless-stopped
