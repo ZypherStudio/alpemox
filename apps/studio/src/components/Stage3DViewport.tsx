@@ -541,15 +541,17 @@ export function Stage3DViewport() {
         node = holder;
       } else {
         const geo =
-          obj.kind === 'sphere'
-            ? new THREE.SphereGeometry(0.55, 24, 18)
-            : obj.kind === 'cylinder'
-              ? new THREE.CylinderGeometry(0.45, 0.45, 1.1, 20)
-              : obj.kind === 'cone'
-                ? new THREE.ConeGeometry(0.55, 1.15, 20)
-                : obj.kind === 'torus'
-                  ? new THREE.TorusGeometry(0.48, 0.16, 16, 36)
-                  : new THREE.BoxGeometry(1, 1, 1);
+          obj.kind === 'backdrop'
+            ? new THREE.PlaneGeometry(1, 1)
+            : obj.kind === 'sphere'
+              ? new THREE.SphereGeometry(0.55, 24, 18)
+              : obj.kind === 'cylinder'
+                ? new THREE.CylinderGeometry(0.45, 0.45, 1.1, 20)
+                : obj.kind === 'cone'
+                  ? new THREE.ConeGeometry(0.55, 1.15, 20)
+                  : obj.kind === 'torus'
+                    ? new THREE.TorusGeometry(0.48, 0.16, 16, 36)
+                    : new THREE.BoxGeometry(1, 1, 1);
         const mat = new THREE.MeshStandardMaterial({
           color: new THREE.Color(obj.color || '#38bdf8'),
           roughness: obj.roughness ?? 0.45,
