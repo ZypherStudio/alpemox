@@ -156,6 +156,7 @@ interface StudioState {
   setMannequinPosePreset: (id: string, preset: string) => void;
   updateMannequinJoint: (id: string, joint: string, axis: 'x' | 'y' | 'z', value: number) => void;
   updateStageLighting: (patch: Partial<StageLightingState>) => void;
+  setCamera3DOrbit: (rotationDeg: number, tiltDeg: number, distance?: number) => void;
 
   // Pipeline
   addPipelineNode: (type: PipelineNode['type'], label: string, config?: Record<string, unknown>) => void;
@@ -706,6 +707,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const next = {
       ...get().project,
       stageLighting: { ...get().project.stageLighting, ...patch },
+    };
+    set({ project: next });
+    scheduleSave(next);
+  },
+
+  setCamera3DOrbit: (rotationDeg, tiltDeg, distance = 5.0) => {
+    const target = get().project.camera3d?.target || { x: 0, y: 1.0, z: 0 };
+    const az = (rotationDeg * Math.PI) / 180;
+    const el = (tiltDeg * Math.PI) / 180;
+    const next = {
+      ...get().project,
+      camera3d: {
+        ...get().project.camera3d,
+        position: {
+          x: +(target.x + distance * Math.cos(el) * Math.sin(az)).toFixed(2),
+          y: +(target.y + distance * Math.sin(el)).toFixed(2),
+          z: +(target.z + distance * Math.cos(el) * Math.cos(az)).toFixed(2),
+        },
+        target,
+      },
     };
     set({ project: next });
     scheduleSave(next);

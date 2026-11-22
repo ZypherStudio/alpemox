@@ -456,6 +456,7 @@ export function Stage3DViewport() {
     cam.position.set(project.camera3d.position.x, project.camera3d.position.y, project.camera3d.position.z);
     cam.lookAt(project.camera3d.target.x, project.camera3d.target.y, project.camera3d.target.z);
     cam.updateProjectionMatrix();
+    orbitRef.current?.update();
   }, [project.camera3d]);
 
   // Sync render mode

@@ -12,9 +12,11 @@ import {
   ImagePlus,
   Send,
   Sun,
+  Compass,
 } from 'lucide-react';
 import { MANNEQUIN_POSE_PRESETS, type BlendMode, type StageObject3D, type StageLightingState } from '@opencraft/shared';
 import { useStudioStore } from '../store/useStudioStore';
+import { OrbitSphere } from './OrbitSphere';
 
 const LIGHTING_PRESETS: Record<StageLightingState['preset'], Partial<StageLightingState>> = {
   studio: { preset: 'studio', bgColor: '#0d1018', ambientIntensity: 0.6, keyIntensity: 1.85, keyColor: '#ffffff', rimColor: '#38bdf8', fogDensity: 0 },
@@ -25,6 +27,9 @@ const LIGHTING_PRESETS: Record<StageLightingState['preset'], Partial<StageLighti
 
 export function LeftSceneSidebar() {
   const [tab, setTab] = useState<'2d' | '3d' | 'vector'>('3d');
+  const [camRot, setCamRot] = useState(30);
+  const [camTilt, setCamTilt] = useState(18);
+  const [camDist, setCamDist] = useState(5.0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const glbInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -51,6 +56,7 @@ export function LeftSceneSidebar() {
   const setMannequinPosePreset = useStudioStore((s) => s.setMannequinPosePreset);
   const updateMannequinJoint = useStudioStore((s) => s.updateMannequinJoint);
   const updateStageLighting = useStudioStore((s) => s.updateStageLighting);
+  const setCamera3DOrbit = useStudioStore((s) => s.setCamera3DOrbit);
 
   const selectedLayer = project.layers2d.find((l) => l.id === selectedLayerId);
   const selectedObj = project.objects3d.find((o) => o.id === selectedObject3DId);
@@ -384,6 +390,46 @@ export function LeftSceneSidebar() {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto border-t border-slate-800/80 bg-[#0d1018] p-3 text-[11px]">
+            {/* ArtCraft OrbitSphere Camera Angles Control */}
+            <div className="space-y-1.5 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-sky-400">
+                <span className="flex items-center gap-1.5">
+                  <Compass className="h-3 w-3" />
+                  Kamera Küresi (Angles)
+                </span>
+                <span className="font-mono text-[9px] text-slate-400">
+                  {camRot}° / {camTilt}°
+                </span>
+              </div>
+              <div className="flex flex-col items-center rounded-lg border border-slate-800/80 bg-[#090b10] py-1">
+                <OrbitSphere
+                  rotation={camRot}
+                  tilt={camTilt}
+                  onDragEnd={(rot, tilt) => {
+                    setCamRot(rot);
+                    setCamTilt(tilt);
+                    setCamera3DOrbit(rot, tilt, camDist);
+                  }}
+                />
+              </div>
+              <label className="flex items-center justify-between text-slate-400">
+                <span>Mesafe</span>
+                <input
+                  type="range"
+                  min={2.5}
+                  max={9}
+                  step={0.5}
+                  value={camDist}
+                  onChange={(e) => {
+                    const d = Number(e.target.value);
+                    setCamDist(d);
+                    setCamera3DOrbit(camRot, camTilt, d);
+                  }}
+                  className="w-28 accent-sky-400"
+                />
+              </label>
+            </div>
+
             {/* Stage Lighting Presets */}
             <div className="space-y-1.5 border-b border-slate-800 pb-2.5">
               <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-400">
