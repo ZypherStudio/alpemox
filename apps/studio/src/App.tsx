@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { ALPEMOX_SUITE_APPS } from '@opencraft/shared';
 import { useStudioStore } from './store/useStudioStore';
+import { t } from './i18n';
 import { AlpemoxWebsite } from './components/AlpemoxWebsite';
 import { AlpemoxLauncher } from './components/AlpemoxLauncher';
 import { AlpemoxAppLogo } from './components/AlpemoxLogos';
@@ -29,6 +30,8 @@ export default function App() {
   const init = useStudioStore((s) => s.init);
   const activePage = useStudioStore((s) => s.activePage);
   const setActivePage = useStudioStore((s) => s.setActivePage);
+  const locale = useStudioStore((s) => s.locale);
+  const setLocale = useStudioStore((s) => s.setLocale);
   const project = useStudioStore((s) => s.project);
   const projectsList = useStudioStore((s) => s.projectsList);
   const selectProject = useStudioStore((s) => s.selectProject);
@@ -95,14 +98,14 @@ export default function App() {
             className="hidden items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:border-[#4e7bfb] hover:text-white sm:flex"
           >
             <Globe className="h-3 w-3 text-[#4e7bfb]" />
-            <span>Site</span>
+            <span>{t(locale, 'site')}</span>
           </button>
 
           <button
             onClick={() => setActivePage('launcher')}
             className="hidden items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:border-[#4e7bfb] hover:text-white sm:flex"
           >
-            <span>Launcher</span>
+            <span>{t(locale, 'launcher')}</span>
           </button>
 
           <button
@@ -178,16 +181,24 @@ export default function App() {
             }`}
           >
             <Radio className="h-3 w-3" />
-            <span className="hidden xl:inline">{wsConnected ? 'MCP / WS' : 'Bağlanıyor'}</span>
+            <span className="hidden xl:inline">{wsConnected ? 'MCP / WS' : t(locale, 'connecting')}</span>
           </div>
 
           <button
+            onClick={() => setLocale(locale === 'tr' ? 'en' : 'tr')}
+            title="Dil Değiştir (TR / EN)"
+            className="rounded-md border border-slate-800 bg-slate-900 px-2 py-1 font-mono text-[11px] font-bold text-slate-200 hover:border-[#4e7bfb]"
+          >
+            {locale.toUpperCase()}
+          </button>
+
+          <button
             onClick={() => setPricingOpen(true)}
-            title="Alpemox Cloud (Yakında)"
+            title="Alpemox Cloud"
             className="flex items-center gap-1 rounded-md border border-[#4e7bfb]/40 bg-[#4e7bfb]/15 px-2 py-1 text-[11px] font-bold text-sky-300 transition hover:bg-[#4e7bfb] hover:text-white"
           >
             <Cloud className="h-3 w-3" />
-            <span>CLOUD</span>
+            <span>{t(locale, 'cloud')}</span>
           </button>
 
           <button
@@ -195,7 +206,7 @@ export default function App() {
             className="flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-slate-200 hover:border-[#4e7bfb]"
           >
             <Settings className="h-3.5 w-3.5 text-[#4e7bfb]" />
-            <span className="hidden lg:inline">AI Ayarları</span>
+            <span className="hidden lg:inline">{t(locale, 'aiSettings')}</span>
           </button>
 
           <button

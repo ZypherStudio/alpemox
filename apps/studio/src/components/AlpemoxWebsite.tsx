@@ -27,6 +27,7 @@ import {
 } from '@opencraft/shared';
 import { useStudioStore } from '../store/useStudioStore';
 import { AlpemoxBrandLogo, AlpemoxAppLogo } from './AlpemoxLogos';
+import { t } from '../i18n';
 
 type OSChoice = 'macos' | 'windows' | 'linux';
 
@@ -89,6 +90,8 @@ export function AlpemoxWebsite() {
 
   const setActivePage = useStudioStore((s) => s.setActivePage);
   const setPricingOpen = useStudioStore((s) => s.setPricingOpen);
+  const locale = useStudioStore((s) => s.locale);
+  const setLocale = useStudioStore((s) => s.setLocale);
 
   useEffect(() => {
     void fetch('/api/requests')
@@ -196,26 +199,33 @@ export function AlpemoxWebsite() {
 
           <nav className={`hidden items-center gap-6 text-xs font-medium md:flex ${mutedText}`}>
             <a href="#explore" className="transition hover:text-[#4e7bfb]">
-              Uygulamalar
+              {t(locale, 'navApps')}
             </a>
             <a href="#suite-grid" className="transition hover:text-[#4e7bfb]">
-              Tüm Paket
+              {t(locale, 'navSuite')}
             </a>
             <a href="#architecture" className="transition hover:text-[#4e7bfb]">
-              Mimari & MCP
+              {t(locale, 'navArch')}
             </a>
             <a href="#pricing" className="transition hover:text-[#4e7bfb]">
-              Suite & Cloud
+              {t(locale, 'navPricing')}
             </a>
             <a href="#roadmap" className="transition hover:text-[#4e7bfb]">
-              Yol Haritası & İstek
+              {t(locale, 'navRoadmap')}
             </a>
             <a href="#download" className="transition hover:text-[#4e7bfb]">
-              İndir
+              {t(locale, 'navDownload')}
             </a>
           </nav>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setLocale(locale === 'tr' ? 'en' : 'tr')}
+              title="Dil Değiştir (TR / EN)"
+              className={`flex h-8 items-center justify-center border px-2 font-mono-hud text-[11px] font-bold transition ${borderLine} ${bgCard} hover:border-[#4e7bfb]`}
+            >
+              {locale.toUpperCase()}
+            </button>
             <button
               onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
               title="Açık / Koyu Tema Değiştir"
@@ -227,13 +237,13 @@ export function AlpemoxWebsite() {
               onClick={() => setActivePage('launcher')}
               className={`border px-3 py-2 text-xs font-semibold transition ${borderLine} ${bgCard} hover:border-[#4e7bfb]`}
             >
-              Launcher
+              {t(locale, 'launcher')}
             </button>
             <button
               onClick={() => launchInBrowser('hybrid')}
               className="flex items-center gap-1.5 bg-[#4e7bfb] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#3b69ea]"
             >
-              <span>Web’de Başlat</span>
+              <span>{t(locale, 'webLaunch')}</span>
               <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -246,18 +256,17 @@ export function AlpemoxWebsite() {
           <div className="flex flex-col items-center text-center">
             <div className={`mb-5 inline-flex items-center gap-2 border px-3 py-1 font-mono-hud text-[11px] uppercase tracking-wider ${borderLine} ${bgCard}`}>
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Açık Kaynak · Ücretsiz · Abonelik Yok
+              {t(locale, 'heroBadge')}
             </div>
 
             <h1 className="font-display max-w-4xl text-4xl font-extrabold tracking-[-0.03em] sm:text-6xl">
-              Yaratıcı kontrolün{' '}
-              <span className="font-serif-accent font-normal italic text-[#4e7bfb]">özgür</span>{' '}
-              hali.
+              {t(locale, 'heroTitlePrefix')}{' '}
+              <span className="font-serif-accent font-normal italic text-[#4e7bfb]">{t(locale, 'heroTitleAccent')}</span>{' '}
+              {t(locale, 'heroTitleSuffix')}
             </h1>
 
             <p className={`mt-5 max-w-2xl text-sm leading-relaxed sm:text-base ${mutedText}`}>
-              Alpemox; 2D/3D hibrit AI sahne stüdyosunu, fotoğraf, vektör ve video editörlerini tek açık kaynaklı
-              çatı altında birleştirir. Tüm paketi indir ya da dilediğin uygulamayı doğrudan tarayıcıda çalıştır.
+              {t(locale, 'heroDesc')}
             </p>
 
             {/* Suite Custom App Icon Dock */}

@@ -27,6 +27,7 @@ import {
 } from '@opencraft/shared';
 import { useStudioStore } from '../store/useStudioStore';
 import { AlpemoxBrandLogo, AlpemoxAppLogo } from './AlpemoxLogos';
+import { t } from '../i18n';
 
 export function AlpemoxLauncher() {
   const project = useStudioStore((s) => s.project);
@@ -42,6 +43,8 @@ export function AlpemoxLauncher() {
   const ollamaReachable = useStudioStore((s) => s.ollamaReachable);
   const ollamaModels = useStudioStore((s) => s.ollamaModels);
   const wsConnected = useStudioStore((s) => s.wsConnected);
+  const locale = useStudioStore((s) => s.locale);
+  const setLocale = useStudioStore((s) => s.setLocale);
 
   const [tab, setTab] = useState<'apps' | 'projects' | 'packs' | 'engines' | 'roadmap'>('apps');
   const [newProjName, setNewProjName] = useState('');
@@ -147,11 +150,11 @@ export function AlpemoxLauncher() {
           <nav className="space-y-1 text-xs font-medium">
             {(
               [
-                ['apps', 'Uygulamalar (7)', Play],
-                ['projects', `Projeler (${projectsList.length || 1})`, FolderOpen],
-                ['packs', 'Eklenti & Varlık Paketleri', Package],
-                ['engines', 'AI Motorları & MCP', Cpu],
-                ['roadmap', 'Yol Haritası & İstek', Sparkles],
+                ['apps', t(locale, 'launcherNavApps'), Play],
+                ['projects', `${locale === 'en' ? 'Projects' : 'Projeler'} (${projectsList.length || 1})`, FolderOpen],
+                ['packs', t(locale, 'launcherNavPacks'), Package],
+                ['engines', t(locale, 'launcherNavEngines'), Cpu],
+                ['roadmap', t(locale, 'launcherNavRoadmap'), Sparkles],
               ] as const
             ).map(([id, label, Icon]) => (
               <button
@@ -181,11 +184,19 @@ export function AlpemoxLauncher() {
           </div>
 
           <button
+            onClick={() => setLocale(locale === 'tr' ? 'en' : 'tr')}
+            className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-200 hover:border-[#4e7bfb]"
+          >
+            <span>{locale === 'tr' ? 'Dil / Language' : 'Language / Dil'}</span>
+            <span className="font-mono-hud font-bold text-[#4e7bfb]">{locale.toUpperCase()}</span>
+          </button>
+
+          <button
             onClick={() => setSettingsOpen(true)}
             className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-200 hover:border-[#4e7bfb]"
           >
             <Settings className="h-3.5 w-3.5 text-[#4e7bfb]" />
-            <span>AI Motor Ayarları</span>
+            <span>{t(locale, 'aiSettings')}</span>
           </button>
 
           <button
@@ -193,7 +204,7 @@ export function AlpemoxLauncher() {
             className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-300 hover:border-[#4e7bfb]"
           >
             <Globe className="h-3.5 w-3.5 text-zinc-400" />
-            <span>Web Sitesine Dön</span>
+            <span>{t(locale, 'launcherBackSite')}</span>
           </button>
         </div>
       </aside>

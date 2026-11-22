@@ -1,6 +1,7 @@
 import { Sparkles, Wand2, Layers, Film, Box, AlertCircle } from 'lucide-react';
 import { MODEL_CATALOG, type CraftWorkflow } from '@opencraft/shared';
 import { useStudioStore } from '../store/useStudioStore';
+import { t } from '../i18n';
 
 const WORKFLOW_TABS: Array<{ id: CraftWorkflow; label: string }> = [
   { id: 'text-to-image', label: 'Metin → Görsel' },
@@ -37,8 +38,7 @@ export function CraftInspector() {
   const setViewportMode = useStudioStore((s) => s.setViewportMode);
   const addStoryboardShot = useStudioStore((s) => s.addStoryboardShot);
   const project = useStudioStore((s) => s.project);
-  const license = useStudioStore((s) => s.license);
-  const setPricingOpen = useStudioStore((s) => s.setPricingOpen);
+  const locale = useStudioStore((s) => s.locale);
 
   const compatibleModels = MODEL_CATALOG.filter((m) => m.workflows.includes(craftWorkflow));
 
@@ -56,7 +56,7 @@ export function CraftInspector() {
       <div className="flex items-center justify-between border-b border-slate-800/80 bg-[#111521] px-3 py-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-100">
           <Sparkles className="h-4 w-4 text-sky-400" />
-          AI Craft Motoru
+          {t(locale, 'craftTitle')}
         </div>
         <span
           className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -65,7 +65,7 @@ export function CraftInspector() {
               : 'bg-sky-500/15 text-sky-300'
           }`}
         >
-          {comfyReachable ? 'ComfyUI Bağlı' : a1111Reachable ? 'A1111 Bağlı' : 'Open AI Hazır'}
+          {comfyReachable ? 'ComfyUI Bağlı' : a1111Reachable ? 'A1111 Bağlı' : t(locale, 'craftReady')}
         </span>
       </div>
 
@@ -110,7 +110,7 @@ export function CraftInspector() {
 
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <label className="text-[11px] font-medium text-slate-400">Sahne Promptu</label>
+            <label className="text-[11px] font-medium text-slate-400">{t(locale, 'craftPromptLabel')}</label>
             <button
               onClick={() => {
                 setCraftField({
@@ -123,7 +123,7 @@ export function CraftInspector() {
               className="flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300"
             >
               <Wand2 className="h-3 w-3" />
-              Zenginleştir
+              {t(locale, 'craftEnhance')}
             </button>
           </div>
           <textarea
@@ -230,7 +230,7 @@ export function CraftInspector() {
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 py-2.5 text-xs font-bold text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110 disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4" />
-          {isCrafting ? 'Üretiliyor...' : batchCount > 1 ? `${batchCount}x Varyasyon Üret` : 'Sahneyi Üret (Craft)'}
+          {isCrafting ? t(locale, 'craftBtnBusy') : batchCount > 1 ? `${batchCount}x Varyasyon` : t(locale, 'craftBtn')}
         </button>
 
         {lastCraftOutput && (

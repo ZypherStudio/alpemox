@@ -22,6 +22,7 @@ import {
   type PipelineEdge,
   type LicenseStatus,
 } from '@opencraft/shared';
+import type { AppLocale } from '../i18n';
 
 export type CanvasTool =
   | 'select'
@@ -42,6 +43,7 @@ interface StageCaptureResult {
 
 interface StudioState {
   activePage: AppPage;
+  locale: AppLocale;
   project: ProjectState;
   projectsList: Array<{ id: string; name: string; updatedAt: string }>;
   viewportMode: ViewportMode;
@@ -106,6 +108,7 @@ interface StudioState {
   selectProject: (id: string) => Promise<void>;
   createNewProject: (name: string) => Promise<void>;
   setActivePage: (page: AppPage, mode?: ViewportMode) => void;
+  setLocale: (locale: AppLocale) => void;
   setViewportMode: (mode: ViewportMode) => void;
   setStageRenderMode: (mode: StageRenderMode) => void;
   setTransformGizmoMode: (mode: 'translate' | 'rotate' | 'scale') => void;
@@ -233,10 +236,19 @@ function getInitialRoute(): { activePage: AppPage; viewportMode: ViewportMode } 
   return { activePage: page, viewportMode };
 }
 
+function getInitialLocale(): AppLocale {
+  if (typeof window === 'undefined') return 'tr';
+  const param = new URLSearchParams(window.location.search).get('lang');
+  if (param === 'en' || param === 'tr') return param;
+  const saved = window.localStorage.getItem('alpemox-locale');
+  return saved === 'en' ? 'en' : 'tr';
+}
+
 const initialRoute = getInitialRoute();
 
 export const useStudioStore = create<StudioState>((set, get) => ({
   activePage: initialRoute.activePage,
+  locale: getInitialLocale(),
   project: createDefaultProject(),
   projectsList: [],
   viewportMode: initialRoute.viewportMode,
@@ -430,6 +442,20 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const url = new URL(window.location.href);
       url.searchParams.set('page', activePage);
       if (activePage === 'studio') url.searchParams.set('mode', nextMode);
+      window.history.replaceState({}, '', url.toString());
+    }
+  },
+
+  setLocale: (locale) => {
+    set({ locale });
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('alpemox-locale', locale);
+      } catch {
+        // ignore
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', locale);
       window.history.replaceState({}, '', url.toString());
     }
   },
