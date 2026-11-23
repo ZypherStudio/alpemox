@@ -156,6 +156,7 @@ interface StudioState {
   add3DObject: (kind: StageObject3D['kind'], extra?: Partial<StageObject3D>) => void;
   update3DObject: (id: string, patch: Partial<StageObject3D>) => void;
   delete3DObject: (id: string) => void;
+  replace3DObjects: (objects: StageObject3D[]) => void;
   setMannequinPosePreset: (id: string, preset: string) => void;
   updateMannequinJoint: (id: string, joint: string, axis: 'x' | 'y' | 'z', value: number) => void;
   updateStageLighting: (patch: Partial<StageLightingState>) => void;
@@ -231,7 +232,7 @@ function getInitialRoute(): { activePage: AppPage; viewportMode: ViewportMode } 
   const p = params.get('page');
   const page: AppPage = p === 'studio' ? 'studio' : p === 'launcher' ? 'launcher' : 'site';
   const modeParam = params.get('mode') as ViewportMode | null;
-  const validModes: ViewportMode[] = ['hybrid', 'photo', 'vector', 'film', '3d', 'moodboard', 'pipeline'];
+  const validModes: ViewportMode[] = ['hybrid', 'photo', 'vector', 'film', '3d', 'game', 'moodboard', 'pipeline'];
   const viewportMode = modeParam && validModes.includes(modeParam) ? modeParam : 'hybrid';
   return { activePage: page, viewportMode };
 }
@@ -708,6 +709,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({
       project: next,
       selectedObject3DId: get().selectedObject3DId === id ? remaining[0]?.id || null : get().selectedObject3DId,
+    });
+    scheduleSave(next);
+  },
+
+  replace3DObjects: (objects3d) => {
+    const next = { ...get().project, objects3d };
+    set({
+      project: next,
+      selectedObject3DId: objects3d[0]?.id || null,
     });
     scheduleSave(next);
   },

@@ -63,7 +63,7 @@ export function LeftSceneSidebar() {
   const effectiveTab: '2d' | '3d' | 'vector' =
     viewportMode === 'photo' ? '2d' : viewportMode === 'vector' ? 'vector' : viewportMode === '3d' ? '3d' : tab;
 
-  if (viewportMode === 'film' || viewportMode === 'moodboard') {
+  if (viewportMode === 'film' || viewportMode === 'moodboard' || viewportMode === 'game') {
     return null;
   }
 

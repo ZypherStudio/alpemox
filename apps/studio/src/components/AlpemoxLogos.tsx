@@ -188,6 +188,32 @@ export function AppIconMoodboard({ size = 48, className = '', ...props }: IconPr
   );
 }
 
+/** Alpemox Game — Star Game Engine Emblem */
+export function AppIconGame({ size = 48, className = '', ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className} {...props}>
+      <defs>
+        <linearGradient id="ico-game-bg" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#F59E0B" />
+          <stop offset="50%" stopColor="#EC4899" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#ico-game-bg)" />
+      <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="14.25" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+      <path
+        d="M17 24C14.5 24 12.5 26 12.2 28.5L10.8 41.5C10.5 44.5 13 47 16 46.5C17.8 46.2 19.3 45 20.3 43.3L23.5 38H40.5L43.7 43.3C44.7 45 46.2 46.2 48 46.5C51 47 53.5 44.5 53.2 41.5L51.8 28.5C51.5 26 49.5 24 47 24H17Z"
+        fill="#FFFFFF"
+        fillOpacity="0.94"
+      />
+      <path d="M21 28V34M18 31H24" stroke="#6366F1" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="42" cy="29.5" r="1.9" fill="#EC4899" />
+      <circle cx="45.5" cy="33" r="1.9" fill="#F59E0B" />
+      <path d="M32 10L34 15.2L39.5 15.5L35.2 19L36.7 24.5L32 21.3L27.3 24.5L28.8 19L24.5 15.5L30 15.2L32 10Z" fill="#FEF08A" stroke="#78350F" strokeWidth="1" />
+    </svg>
+  );
+}
+
 /** Render custom logo component by Suite App ID */
 export function AlpemoxAppLogo({ appId, size = 44, className = '' }: { appId: string; size?: number; className?: string }) {
   switch (appId) {
@@ -199,6 +225,8 @@ export function AlpemoxAppLogo({ appId, size = 44, className = '' }: { appId: st
       return <AppIconFilm size={size} className={className} />;
     case 'alpemox-stage3d':
       return <AppIconStage3D size={size} className={className} />;
+    case 'alpemox-game':
+      return <AppIconGame size={size} className={className} />;
     case 'alpemox-moodboard':
       return <AppIconMoodboard size={size} className={className} />;
     case 'alpemox-nodes':

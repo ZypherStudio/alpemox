@@ -1,4 +1,5 @@
-export type ViewportMode = 'hybrid' | 'photo' | 'vector' | 'film' | '3d' | 'moodboard' | 'pipeline';
+export type ViewportMode = 'hybrid' | 'photo' | 'vector' | 'film' | '3d' | 'game' | 'moodboard' | 'pipeline';
+export type GameRole = 'player' | 'solid' | 'collectible' | 'hazard' | 'goal' | 'npc' | 'decor';
 export type StageRenderMode = 'lit' | 'depth' | 'normal' | 'wireframe';
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay';
 export type PlanTier = 'free' | 'pro';
@@ -35,7 +36,7 @@ export interface SuiteAppSpec {
   id: string;
   name: string;
   tagline: string;
-  category: 'Core Studio' | 'Raster & Photo' | 'Vector & Design' | 'Video & Motion' | '3D & AI';
+  category: 'Core Studio' | 'Raster & Photo' | 'Vector & Design' | 'Video & Motion' | '3D & AI' | 'Game Engine';
   mode: ViewportMode;
   badge: string;
   description: string;
@@ -115,6 +116,10 @@ export interface StageObject3D {
   glbDataUrl?: string;
   svgString?: string;
   extrudeDepth?: number;
+  gameRole?: GameRole;
+  moveSpeed?: number;
+  jumpForce?: number;
+  patrolRange?: number;
 }
 
 export interface StageLightingState {
@@ -300,7 +305,7 @@ export const PRICING_PLANS = [
     period: 'AGPL-3.0 · Tamamen Ücretsiz',
     description: 'Tüm 7 yaratıcı editör, yerel AI bağlantıları ve tam çözünürlüklü çıktı kendi cihazında ücretsiz.',
     features: [
-      '7 Uygulama: Studio, Photo, Vector, Film, 3D Stage, Moodboard & Nodes',
+      '8 Uygulama: Studio, Photo, Vector, Film, 3D Stage, Game Engine ★, Moodboard & Nodes',
       'Tüm Video Geçişleri (Glitch Flash, Zoom Whip, Wipe) & Efektler (VHS, Bloom)',
       '720p & 1080p yerel tarayıcı dışa aktarım + .GLB/.OBJ/.SVG/.WebM',
       'Yerel ComfyUI / A1111 / Ollama + Pollinations & 1x–4x Varyasyon',
@@ -577,6 +582,18 @@ export const ALPEMOX_SUITE_APPS: SuiteAppSpec[] = [
     description:
       'Sahne içi Transform Gizmo okları, tıklamalı obje seçimi, 2D SVG’den 3D Extrude, görselden 3D kabartma mesh ve .GLB/.OBJ ihracı.',
     highlights: ['3D Transform Gizmo (Taşı/Döndür/Ölçekle)', 'Görselden 3D Kabartma & Extrude', '.GLB / .OBJ Dışa Aktarım'],
+    platforms: ['macOS', 'Windows', 'Linux', 'Web'],
+  },
+  {
+    id: 'alpemox-game',
+    name: 'Alpemox Game',
+    tagline: '★ Yıldız Modül · 3D Oyun Motoru & Web Export',
+    category: 'Game Engine',
+    mode: 'game',
+    badge: '★ Star Engine · Physics + Playtest',
+    description:
+      '3D Stage ve AI varlıklarını anında oynanabilir 3D oyuna çevirir: WASD + Zıplama fiziği, platform çarpışması, dönen altınlar, devriye NPC, WebAudio SFX ve tek dosya .HTML oyun dışa aktarımı.',
+    highlights: ['Canlı Playtest (WASD + Fizik + Çarpışma)', 'Tek Tık Platformer & Arena Şablonları', 'Oynanabilir Tek Dosya .HTML Oyun Export'],
     platforms: ['macOS', 'Windows', 'Linux', 'Web'],
   },
   {

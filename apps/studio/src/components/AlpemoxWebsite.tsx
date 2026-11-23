@@ -438,11 +438,11 @@ export function AlpemoxWebsite() {
               Tüm Editör Paketi
             </div>
             <h2 className="font-display mt-1 text-2xl font-bold tracking-tight">
-              Tek İndirme, Yedi Uzman Uygulama
+              Tek İndirme, Sekiz Uzman Uygulama (+ Alpemox Game ★)
             </h2>
           </div>
 
-          <div className={`grid gap-px border md:grid-cols-2 lg:grid-cols-3 ${borderLine} ${isDark ? 'bg-white/10' : 'bg-black/12'}`}>
+          <div className={`grid gap-px border md:grid-cols-2 lg:grid-cols-4 ${borderLine} ${isDark ? 'bg-white/10' : 'bg-black/12'}`}>
             {ALPEMOX_SUITE_APPS.map((app, idx) => (
               <div key={app.id} className={`flex flex-col justify-between p-6 ${bgCard}`}>
                 <div>

@@ -56,6 +56,7 @@ test('server API, WebSocket sync, pipeline run, and MCP stdio integration', asyn
     const suite = await suiteRes.json();
     assert.equal(suite.brand, 'Alpemox');
     assert.ok(suite.apps.some((a) => a.id === 'alpemox-photo'));
+    assert.ok(suite.apps.some((a) => a.id === 'alpemox-game'));
 
     const dlRes = await fetch(`${baseUrl}/api/download/alpemox-photo/macos`);
     assert.equal(dlRes.status, 200);

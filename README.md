@@ -61,10 +61,11 @@ Inspired architecturally by [ArtCraft](https://github.com/storytold/artcraft) (M
   </tr>
 </table>
 
-## 🧩 7 Integrated Modules
+## 🧩 8 Integrated Modules (★ Star Module: Alpemox Game)
 
 | Module | What It Does |
 | :--- | :--- |
+| **Alpemox Game ★** | **Live 3D Mini Game Engine**: turn 3D Stage assets (`player`, `solid`, `collectible`, `hazard`, `goal`, `npc`) into playable 3D platformers & arenas with real-time WASD/Space physics, AABB collisions, WebAudio SFX, starter templates, and **1-click standalone playable `.HTML` export**. |
 | **Alpemox Studio (Hybrid)** | Live **2D ↔ 3D bridge**: pose a 3D mannequin, capture RGB + Depth, paint/mask in 2D, craft with AI, and project back onto the 3D stage as a billboard. |
 | **Alpemox Photo** | Multi-layer canvas, drag-and-drop image import, live luminance histogram, `Teal & Orange / Kodak / Noir` LUT presets, temperature, vignette, blur, drop shadow, crop, merge visible layers, Sobel edge extraction, client-side background removal, and invert inpaint mask. |
 | **Alpemox Vector** | Smooth Cubic Bezier pen with draggable anchor points, shapes (`Rect`, `Ellipse`, `Star`, `Polygon`, `Line`, `Text`), corner radius, dashed strokes, CSS keyframe motion presets (`Pulse`, `Spin`, `Float`), SVG import/export, and 1-click **3D Extrude**. |

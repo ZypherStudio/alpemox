@@ -17,6 +17,7 @@ import { AlpemoxAppLogo } from './components/AlpemoxLogos';
 import { LeftSceneSidebar } from './components/LeftSceneSidebar';
 import { Canvas2DEditor } from './components/Canvas2DEditor';
 import { Stage3DViewport } from './components/Stage3DViewport';
+import { GameEngineEditor } from './components/GameEngineEditor';
 import { VectorEditor } from './components/VectorEditor';
 import { FilmEditor } from './components/FilmEditor';
 import { MoodboardEditor } from './components/MoodboardEditor';
@@ -241,11 +242,12 @@ export default function App() {
             {viewportMode === 'vector' && <VectorEditor />}
             {viewportMode === 'film' && <FilmEditor />}
             {viewportMode === '3d' && <Stage3DViewport />}
+            {viewportMode === 'game' && <GameEngineEditor />}
             {viewportMode === 'moodboard' && <MoodboardEditor />}
             {viewportMode === 'pipeline' && <PipelineGraph />}
           </div>
 
-          {viewportMode !== 'film' && viewportMode !== 'moodboard' && <StoryboardDock />}
+          {viewportMode !== 'film' && viewportMode !== 'moodboard' && viewportMode !== 'game' && <StoryboardDock />}
         </div>
 
         {rightSidebarOpen && <CraftInspector />}
