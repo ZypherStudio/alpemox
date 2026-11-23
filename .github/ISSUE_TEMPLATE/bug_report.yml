@@ -1,0 +1,32 @@
+name: 🐛 Bug Report
+description: Report a UI, AI provider, 3D Stage, Film, Vector, Photo, or MCP bug
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: os
+    attributes:
+      label: OS & Browser / Runtime
+      placeholder: "e.g. macOS 15 + Chrome 131 / Node v22"
+  - type: dropdown
+    id: module
+    attributes:
+      label: Affected Module
+      options:
+        - Alpemox Studio (Hybrid)
+        - Alpemox Photo
+        - Alpemox Vector
+        - Alpemox Film
+        - Alpemox 3D Stage
+        - Alpemox Moodboard
+        - Alpemox Nodes & MCP
+        - Website / Launcher
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Steps to Reproduce & Expected Behavior
+      placeholder: What did you click and what happened?
+    validations:
+      required: true

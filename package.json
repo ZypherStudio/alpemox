@@ -9,6 +9,7 @@
     "apps/*"
   ],
   "scripts": {
+    "start": "node apps/server/src/index.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:server": "npm --workspace=@opencraft/server run dev",
     "dev:studio": "npm --workspace=@opencraft/studio run dev",

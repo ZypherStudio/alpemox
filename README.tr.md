@@ -12,9 +12,13 @@
 
 ---
 
-**Alpemox**; çok katmanlı fotoğraf editörü, Bezier vektör tasarımı, çok kanallı video/animasyon kurgusu, pozlanabilir Three.js 3D sahnesi, düğüm tabanlı AI akışları ve canlı **MCP ajan kontrolünü** abonelik dayatmayan tek açık kaynak çatı altında toplar.
+**Alpemox**; çok katmanlı fotoğraf editörü, Bezier vektör tasarımı, çok kanallı video/animasyon kurgusu, pozlanabilir Three.js 3D sahnesi, düğüm tabanlı AI akışları, canlı `TR/EN` dil desteği ve canlı **MCP ajan kontrolünü** abonelik dayatmayan tek açık kaynak çatı altında toplar.
 
-Mimari yaklaşımı [ArtCraft](https://github.com/storytold/artcraft) (MIT / Apache-2.0) açık kaynak projesinden ilham alır; atıf ve marka sınırları [NOTICE](NOTICE) dosyasındadır.
+Mimari yaklaşımı [ArtCraft](https://github.com/storytold/artcraft) (MIT / Apache-2.0) açık kaynak projesinden ilham alır (`OrbitSphere` 3D kamera açısı küresi doğrudan uyarlanmıştır); atıf ve marka sınırları [NOTICE](NOTICE) dosyasındadır.
+
+<div align="center">
+  <img src="docs/screenshots/alpemox-demo.gif" alt="Alpemox Canlı Demo" width="840" />
+</div>
 
 ## ✨ Ekran Görüntüleri
 

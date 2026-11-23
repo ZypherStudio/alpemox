@@ -66,11 +66,11 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(`OpenCraft CLI
+    console.log(`Alpemox CLI (opencraft-cli)
 Usage:
-  opencraft-cli health
-  opencraft-cli state [projectId]
-  opencraft-cli pose <objectId> <neutral|heroic|action|sitting|walking> [projectId]
-  opencraft-cli add-3d <mannequin|box|sphere|cylinder|backdrop> <name> [projectId]
-  opencraft-cli craft "<prompt>"`);
+  npm run cli -- health
+  npm run cli -- state [projectId]
+  npm run cli -- pose <objectId> <neutral|heroic|action|sitting|walking> [projectId]
+  npm run cli -- add-3d <mannequin|box|sphere|cylinder|backdrop> <name> [projectId]
+  npm run cli -- craft "<prompt>"`);
 }

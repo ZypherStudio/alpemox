@@ -1,0 +1,26 @@
+name: ✨ Feature Request
+description: Propose a new editor tool, AI workflow node, LUT, or Video/Animation feature
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Category
+      options:
+        - Video & Motion
+        - 2D Animation & Rigging
+        - Photo & Retouch
+        - Vector & SVG
+        - 3D Stage & PBR
+        - AI Providers & Workflows
+        - Desktop / Tauri Packaging
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Feature Description & Use Case
+      placeholder: Describe how this feature helps your workflow.
+    validations:
+      required: true

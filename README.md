@@ -18,9 +18,13 @@
 
 ---
 
-**Alpemox** brings together layered raster photo retouching, Bezier vector design, multi-track video/motion editing, an articulated Three.js 3D stage, node-based AI pipelines, and live **MCP agent control** in one local-first, zero-subscription open suite.
+**Alpemox** brings together layered raster photo retouching, Bezier vector design, multi-track video/motion editing, an articulated Three.js 3D stage, node-based AI pipelines, live `TR/EN` i18n, and **MCP agent control** in one local-first, zero-subscription open suite.
 
-Inspired architecturally by [ArtCraft](https://github.com/storytold/artcraft) (MIT / Apache-2.0) — full attribution & trademark boundaries live in [NOTICE](NOTICE).
+Inspired architecturally by [ArtCraft](https://github.com/storytold/artcraft) (MIT / Apache-2.0 — including an adapted interactive `OrbitSphere` 3D camera angles widget) — full attribution & trademark boundaries live in [NOTICE](NOTICE).
+
+<div align="center">
+  <img src="docs/screenshots/alpemox-demo.gif" alt="Alpemox Live Walkthrough Demo" width="840" />
+</div>
 
 ## ✨ Visual Showcase
 
@@ -86,7 +90,7 @@ git clone https://github.com/ZypherStudio/alpemox.git
 cd alpemox
 npm install
 npm run build
-node apps/server/src/index.mjs
+npm start
 ```
 Open:
 - **Website:** http://localhost:4310/
