@@ -477,6 +477,45 @@ fi
     }
   });
 
+  app.post('/api/projects/:id/game-control', (req, res) => {
+    const command = String(req.body?.command || '').trim();
+    const payload = req.body?.payload || {};
+    if (!command) {
+      return res.status(400).json({ ok: false, error: 'command required' });
+    }
+    broadcast({
+      type: 'game:control',
+      projectId: req.params.id,
+      command,
+      payload,
+      source: req.body?.source || 'mcp',
+    });
+    return res.json({ ok: true, projectId: req.params.id, command, payload });
+  });
+
+  app.get('/api/mcp/config', (req, res) => {
+    const mcpEntryPath = path.join(repoRoot, 'packages/mcp/bin/opencraft-mcp.mjs');
+    const hostHeader = req.get('host') || '127.0.0.1:4310';
+    const serverUrl = `${req.protocol}://${hostHeader}`;
+    res.json({
+      serverName: 'alpemox',
+      mcpEntryPath,
+      serverUrl,
+      claudeCliCommand: `claude mcp add alpemox -e OPENCRAFT_SERVER_URL=${serverUrl} -- node "${mcpEntryPath}"`,
+      mcpJsonConfig: {
+        mcpServers: {
+          alpemox: {
+            command: 'node',
+            args: [mcpEntryPath],
+            env: {
+              OPENCRAFT_SERVER_URL: serverUrl,
+            },
+          },
+        },
+      },
+    });
+  });
+
   // Serve built frontend if available
   const studioDist = path.join(repoRoot, 'apps/studio/dist');
   if (fs.existsSync(studioDist)) {

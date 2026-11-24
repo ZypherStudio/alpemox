@@ -193,6 +193,9 @@ test('server API, WebSocket sync, pipeline run, and MCP stdio integration', asyn
     assert.ok(toolNames.includes('set_mannequin_pose'));
     assert.ok(toolNames.includes('add_3d_object'));
     assert.ok(toolNames.includes('run_craft'));
+    assert.ok(toolNames.includes('game_build_level'));
+    assert.ok(toolNames.includes('game_spawn_entity'));
+    assert.ok(toolNames.includes('game_control'));
 
     const poseRes = await mcpClient.callTool({
       name: 'set_mannequin_pose',
@@ -206,6 +209,29 @@ test('server API, WebSocket sync, pipeline run, and MCP stdio integration', asyn
     });
     assert.ok(add3dRes.content[0].text.includes('3D object added'));
 
+    // Build a complete 3D game via MCP (Claude/Cursor flow)
+    const buildGameRes = await mcpClient.callTool({
+      name: 'game_build_level',
+      arguments: {
+        projectId: 'default',
+        clearExisting: false,
+        skyTheme: 'neon',
+        autoPlaytest: true,
+        entities: [
+          { name: 'MCP Trambolin', kind: 'cylinder', gameRole: 'bounce', x: 2, y: 0.5, z: -2, sx: 1.6, sy: 0.4, sz: 1.6, color: '#84cc16', bounceForce: 19 },
+          { name: 'MCP AI Bot', kind: 'cone', gameRole: 'npc', x: -2, y: 1, z: -4, sx: 1, sy: 1.4, sz: 1, color: '#a855f7', npcBehavior: 'chase', moveSpeed: 3.2 },
+        ],
+      },
+    });
+    assert.ok(buildGameRes.content[0].text.includes('Live Playtest started'));
+
+    const sceneListRes = await mcpClient.callTool({
+      name: 'game_get_scene',
+      arguments: { projectId: 'default' },
+    });
+    const sceneJson = JSON.parse(sceneListRes.content[0].text);
+    assert.ok(sceneJson.entities.some((e) => e.name === 'MCP AI Bot' && e.npcBehavior === 'chase'));
+
     await mcpClient.close();
 
     // Give WS a brief moment to receive broadcasts
@@ -214,7 +240,15 @@ test('server API, WebSocket sync, pipeline run, and MCP stdio integration', asyn
 
     assert.ok(wsEvents.some((e) => e.type === 'project:updated' && e.action === 'set_mannequin_pose'));
     assert.ok(wsEvents.some((e) => e.type === 'project:updated' && e.action === 'add_3d_object'));
+    assert.ok(wsEvents.some((e) => e.type === 'game:control' && e.command === 'start_playtest'));
     assert.ok(wsEvents.some((e) => e.type === 'craft:completed'));
+
+    // Verify /api/mcp/config helper for Claude Desktop/CLI setup
+    const mcpCfgRes = await fetch(`${baseUrl}/api/mcp/config`);
+    assert.equal(mcpCfgRes.status, 200);
+    const mcpCfg = await mcpCfgRes.json();
+    assert.ok(mcpCfg.claudeCliCommand.includes('claude mcp add alpemox'));
+    assert.ok(mcpCfg.mcpJsonConfig.mcpServers.alpemox);
 
     // Verify final state persisted on disk
     const finalRes = await fetch(`${baseUrl}/api/projects/default`);

@@ -113,9 +113,13 @@ npm test       # Runs unit, REST API, WebSocket, and MCP stdio integration tests
 
 ---
 
-## 🔌 Connect AI Agents via MCP
+## 🔌 Connect Claude / Cursor / AI Agents via MCP
 
-Let Claude Desktop, Cursor, Antigravity, or custom agents manipulate 3D mannequins, add layers, craft AI assets, and run pipelines live via WebSocket:
+Already have a **Claude Desktop / Claude Code / Cursor / Antigravity** subscription? Connect it directly to **Alpemox Game** via MCP (`game_build_level`, `game_spawn_entity`, `game_update_entity`, `game_control`, `game_get_scene`) — ask Claude to build entire playable 3D levels, spawn AI bots/turrets, and launch live Playtest over WebSocket:
+
+```bash
+claude mcp add alpemox -e OPENCRAFT_SERVER_URL=http://127.0.0.1:4310 -- node "<ALPEMOX_DIR>/packages/mcp/bin/opencraft-mcp.mjs"
+```
 
 ```json
 {

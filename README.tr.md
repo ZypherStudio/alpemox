@@ -46,7 +46,13 @@ node apps/server/src/index.mjs
 - **Docker:** `docker compose up --build`
 - **Geliştirme & Test:** `npm run dev` · `npm test`
 
-## 🔌 MCP Ajan Entegrasyonu
+## 🔌 Claude / Cursor / MCP Ajan Entegrasyonu (Kendi Üyeliğinle Oyun Yaptır!)
+
+Halihazırda **Claude / Cursor / Antigravity** üyeliğiniz varsa doğrudan Alpemox MCP’ye bağlayarak sohbetten **3D oyun kurdurabilir** (`game_build_level`, `game_spawn_entity`, `game_control`), canlı Playtest başlatabilirsiniz:
+
+```bash
+claude mcp add alpemox -e OPENCRAFT_SERVER_URL=http://127.0.0.1:4310 -- node "<ALPEMOX_KLASORU>/packages/mcp/bin/opencraft-mcp.mjs"
+```
 
 ```json
 {

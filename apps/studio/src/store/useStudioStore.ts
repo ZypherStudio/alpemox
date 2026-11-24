@@ -377,6 +377,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         if (msg.type === 'license:updated' && msg.license) {
           set({ license: msg.license });
         }
+        if (msg.type === 'game:control') {
+          window.dispatchEvent(new CustomEvent('alpemox:game-control', { detail: msg }));
+        }
       } catch {
         // Ignore
       }

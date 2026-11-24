@@ -10,6 +10,7 @@ import {
   ArrowUp,
   Bot,
   Brain,
+  Check,
   ChevronDown,
   Coins,
   Copy,
@@ -23,6 +24,7 @@ import {
   MessageSquare,
   Move,
   Play,
+  Plug,
   Plus,
   RotateCcw,
   RotateCw,
@@ -32,6 +34,7 @@ import {
   Sliders,
   Sparkles,
   Square,
+  Terminal,
   Trash2,
   Trophy,
   Upload,
@@ -208,6 +211,7 @@ export const GameEngineEditor: React.FC = () => {
     providerStatus,
     ollamaReachable,
     ollamaModels,
+    wsConnected,
   } = useStudioStore();
 
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
@@ -253,6 +257,13 @@ export const GameEngineEditor: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [chatReply, setChatReply] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
+
+  // Claude / Cursor / Antigravity MCP Config fetched dynamically from server
+  const [mcpConfig, setMcpConfig] = useState<{
+    claudeCliCommand: string;
+    mcpJsonConfig: Record<string, unknown>;
+  } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // User's Custom / Open-Source Local AI Config
   const [aiConfig, setAiConfig] = useState<GameAiConfig>({
@@ -1196,6 +1207,52 @@ export const GameEngineEditor: React.FC = () => {
     setStatusNotice(null);
   }, [add3DObject, rebuildSceneObjects]);
 
+  // Fetch local MCP connection snippet + listen for live MCP game-control WebSocket commands
+  useEffect(() => {
+    fetch('/api/mcp/config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.claudeCliCommand) setMcpConfig(d);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const onControl = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as {
+        command?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (!detail?.command) return;
+      const cmd = detail.command;
+      const p = detail.payload || {};
+      if (cmd === 'start_playtest') {
+        startPlaytest();
+      } else if (cmd === 'stop_playtest') {
+        stopPlaytest();
+      } else if (cmd === 'reset_game') {
+        if (playStateRef.current.playing) startPlaytest();
+        else rebuildSceneObjects();
+      } else if (cmd === 'companion_say' && typeof p.message === 'string') {
+        setChatReply(`[Claude / MCP] ${p.message}`);
+        setChatOpen(true);
+        triggerPopup('Claude / MCP Mesajı!');
+      } else if (cmd === 'set_settings') {
+        if (typeof p.cameraMode === 'string') setCameraMode(p.cameraMode as CameraViewMode);
+        if (typeof p.skyTheme === 'string') setSkyTheme(p.skyTheme as SkyThemeId);
+        setRules((prev) => ({
+          doubleJump: typeof p.doubleJump === 'boolean' ? p.doubleJump : prev.doubleJump,
+          dashEnabled: typeof p.dashEnabled === 'boolean' ? p.dashEnabled : prev.dashEnabled,
+          shooterEnabled: typeof p.shooterEnabled === 'boolean' ? p.shooterEnabled : prev.shooterEnabled,
+          requireAllCoins: typeof p.requireAllCoins === 'boolean' ? p.requireAllCoins : prev.requireAllCoins,
+          gravity: typeof p.gravity === 'number' ? p.gravity : prev.gravity,
+        }));
+      }
+    };
+    window.addEventListener('alpemox:game-control', onControl);
+    return () => window.removeEventListener('alpemox:game-control', onControl);
+  }, [rebuildSceneObjects, startPlaytest, stopPlaytest, triggerPopup]);
+
   const handleLoadTemplate = (kind: 'platformer' | 'arena' | 'tower' | 'space') => {
     setOpenMenu(null);
     if (isPlaying) stopPlaytest();
@@ -2009,8 +2066,8 @@ export const GameEngineEditor: React.FC = () => {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Brain className="h-3.5 w-3.5" />
-              Oyun AI
+              <Plug className="h-3.5 w-3.5" />
+              MCP & AI
             </button>
             <button
               type="button"
@@ -2142,12 +2199,91 @@ export const GameEngineEditor: React.FC = () => {
 
           {rightTab === 'ai' && (
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-              <div className="rounded-xl border border-teal-400/30 bg-teal-500/10 p-3 space-y-1">
+              {/* Claude / Cursor / Antigravity MCP Direct Connect Card */}
+              <div
+                data-testid="mcp-connect-card"
+                className="rounded-xl border border-amber-400/35 bg-gradient-to-br from-amber-500/12 to-sky-500/10 p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-200 flex items-center gap-1.5">
+                    <Plug className="h-4 w-4" /> Claude / Cursor MCP Bağla
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      wsConnected
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                        : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    {wsConnected ? 'Canlı WS Hazır' : 'Bağlanıyor'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  <strong>Claude Code / Claude Desktop / Cursor</strong> üyeliğinle Alpemox MCP’yi bağla; Claude doğrudan sahneye 3D oyun kurup <strong>Oynat</strong> komutunu tetikler!
+                </p>
+
+                {mcpConfig && (
+                  <div className="space-y-1.5 pt-1">
+                    <button
+                      type="button"
+                      data-testid="copy-claude-cli-btn"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(mcpConfig.claudeCliCommand);
+                        setCopiedId('cli');
+                        window.setTimeout(() => setCopiedId(null), 1800);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg border border-white/15 bg-slate-950/90 px-2.5 py-1.5 text-[11px] text-sky-200 hover:bg-slate-900"
+                    >
+                      <span className="flex items-center gap-1.5 truncate font-mono">
+                        <Terminal className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                        claude mcp add alpemox...
+                      </span>
+                      {copiedId === 'cli' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="copy-mcp-json-btn"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(JSON.stringify(mcpConfig.mcpJsonConfig, null, 2));
+                        setCopiedId('json');
+                        window.setTimeout(() => setCopiedId(null), 1800);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg border border-white/15 bg-slate-950/90 px-2.5 py-1.5 text-[11px] text-slate-200 hover:bg-slate-900"
+                    >
+                      <span className="truncate font-mono">claude_desktop_config.json Kopyala</span>
+                      {copiedId === 'json' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="copy-claude-prompt-btn"
+                      onClick={() => {
+                        const ex =
+                          'Alpemox MCP (game_build_level) kullanarak 5 altınlı, hareketli köprülü, trambolinli, ateş eden taretli ve AI yoldaşlı 3D parkur oyunu yap, sonra autoPlaytest:true ile başlat!';
+                        void navigator.clipboard?.writeText(ex);
+                        setCopiedId('prompt');
+                        window.setTimeout(() => setCopiedId(null), 1800);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg border border-amber-400/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100 hover:bg-amber-500/20"
+                    >
+                      <span className="truncate">Örnek Claude Oyun Komutu Kopyala</span>
+                      {copiedId === 'prompt' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+
+                    <div className="text-[10px] text-slate-400 font-mono truncate" title="MCP Tools">
+                      Araçlar: game_build_level · game_spawn_entity · game_control
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-teal-400/30 bg-teal-500/10 p-2.5 space-y-1">
                 <div className="font-bold text-teal-200 flex items-center gap-1.5">
-                  <Brain className="h-4 w-4" /> Kendi Açık Kaynak AI’ını Bağla
+                  <Brain className="h-4 w-4" /> Yerel Ollama / Özel AI Motoru
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  Yerel <strong>Ollama</strong>, <strong>LM Studio</strong> veya kendi API’ını ekleyip oyuna canlı yapay zeka beyni kazandır.
+                  Oyun içi NPC sohbeti veya yerel seviye üretimi için <strong>Ollama / LM Studio</strong> da bağlayabilirsiniz.
                 </p>
               </div>
 

@@ -116,6 +116,7 @@ export class ProjectStore {
       case 'add_3d_object': {
         const kind = payload.kind || 'box';
         const obj = {
+          ...payload,
           id: payload.id || makeId('obj3d'),
           name: payload.name || `3D ${kind}`,
           kind,
@@ -124,10 +125,31 @@ export class ProjectStore {
           rotation: payload.rotation || { x: 0, y: 0, z: 0 },
           scale: payload.scale || { x: 1, y: 1, z: 1 },
           color: payload.color || '#38bdf8',
-          pose: kind === 'mannequin' ? clonePose(payload.posePreset || 'neutral') : undefined,
+          pose: kind === 'mannequin' ? clonePose(payload.posePreset || 'neutral') : payload.pose,
           textureDataUrl: payload.textureDataUrl,
         };
         project.objects3d.push(obj);
+        break;
+      }
+      case 'replace_3d_objects': {
+        if (!Array.isArray(payload.objects3d)) {
+          throw new Error('replace_3d_objects requires payload.objects3d array');
+        }
+        project.objects3d = payload.objects3d.map((item, idx) => {
+          const kind = item.kind || 'box';
+          return {
+            ...item,
+            id: item.id || makeId(`gm${idx}`),
+            name: item.name || `Entity ${idx + 1}`,
+            kind,
+            visible: item.visible ?? true,
+            position: item.position || { x: 0, y: 0.6, z: 0 },
+            rotation: item.rotation || { x: 0, y: 0, z: 0 },
+            scale: item.scale || { x: 1, y: 1, z: 1 },
+            color: item.color || '#38bdf8',
+            pose: kind === 'mannequin' ? item.pose || clonePose(item.posePreset || 'neutral') : item.pose,
+          };
+        });
         break;
       }
       case 'update_3d_object': {
