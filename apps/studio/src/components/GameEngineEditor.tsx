@@ -4,48 +4,42 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { clonePose, type GameRole, type StageObject3D } from '@opencraft/shared';
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
   Bot,
-  Box,
-  Camera,
-  CheckCircle2,
+  Brain,
+  ChevronDown,
   Coins,
   Copy,
   Crosshair,
   Download,
-  Flag,
   Focus,
   Gamepad2,
   Heart,
   Layers,
-  Magnet,
   Maximize2,
+  MessageSquare,
   Move,
-  Music,
   Play,
   Plus,
-  Rocket,
   RotateCcw,
   RotateCw,
+  Send,
+  Settings2,
   Shield,
   Sliders,
   Sparkles,
   Square,
-  Sun,
   Trash2,
   Trophy,
   Upload,
-  User,
-  Volume2,
-  VolumeX,
   Wand2,
   Zap,
 } from 'lucide-react';
 import { useStudioStore } from '../store/useStudioStore';
+import { callGameAi, compileCustomBotFn, type GameAiConfig, type GameAiProvider } from './game/gameAiClient';
 import { playGameSfx, SynthMusicLoop } from './game/gameAudio';
 import { buildStandaloneHtmlGame } from './game/gameHtmlExport';
 import {
@@ -74,12 +68,13 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
         role === 'hazard' ||
         role === 'bounce' ||
         role === 'checkpoint' ||
-        role === 'powerup'
+        role === 'powerup' ||
+        obj.npcBehavior === 'companion'
         ? obj.color
         : '#000000',
     ),
     emissiveIntensity:
-      role === 'goal' || role === 'powerup'
+      role === 'goal' || role === 'powerup' || obj.npcBehavior === 'companion'
         ? 0.42
         : role === 'bounce' || role === 'checkpoint'
           ? 0.35
@@ -178,7 +173,7 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.62, 0.76, 28),
       new THREE.MeshBasicMaterial({
-        color: ROLE_META[role].ringColor,
+        color: obj.npcBehavior === 'companion' ? '#2dd4bf' : ROLE_META[role].ringColor,
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.76,
@@ -210,6 +205,9 @@ export const GameEngineEditor: React.FC = () => {
     delete3DObject,
     replace3DObjects,
     setViewportMode,
+    providerStatus,
+    ollamaReachable,
+    ollamaModels,
   } = useStudioStore();
 
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
@@ -240,14 +238,36 @@ export const GameEngineEditor: React.FC = () => {
   const [snapSize, setSnapSize] = useState<number>(0);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>('tps');
   const [skyTheme, setSkyTheme] = useState<SkyThemeId>('cyber');
-  const [rightTab, setRightTab] = useState<'entities' | 'rules'>('entities');
-  const [aiPrompt, setAiPrompt] = useState(
-    '5 altın, hareketli platform, trambolin ve 2 takipçi botlu neon parkur',
-  );
+  const [rightTab, setRightTab] = useState<'entities' | 'ai' | 'rules'>('entities');
+  const [openMenu, setOpenMenu] = useState<'templates' | 'add' | 'settings' | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('4 altın, hareketli platform ve AI yoldaşlı uzay parkuru');
+  const [aiBusy, setAiBusy] = useState(false);
+
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [sfxMuted, setSfxMuted] = useState(false);
   const [actionPopup, setActionPopup] = useState<string | null>(null);
   const popupTimerRef = useRef<number | null>(null);
+
+  // In-game AI Chat overlay
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatReply, setChatReply] = useState<string | null>(null);
+  const [chatBusy, setChatBusy] = useState(false);
+
+  // User's Custom / Open-Source Local AI Config
+  const [aiConfig, setAiConfig] = useState<GameAiConfig>({
+    provider: ollamaReachable ? 'ollama' : 'builtin',
+    ollamaUrl: providerStatus?.ollamaUrl || 'http://127.0.0.1:11434',
+    ollamaModel: ollamaModels[0] || providerStatus?.ollamaModel || 'llama3.2',
+    customBaseUrl: 'http://127.0.0.1:1234/v1',
+    customModel: 'local-model',
+    customApiKey: '',
+    systemPrompt:
+      'Sen bu oyunun dost canlısı AI rehberisin. Oyuncuya kısa Türkçe ipuçları ve moral ver.',
+    customBotRule: 'none',
+    customBotJs: 'if (dist < 10) { vx = (dx / (dist + 0.1)) * speed; vz = (dz / (dist + 0.1)) * speed; }',
+  });
+  const [aiTestNote, setAiTestNote] = useState<string | null>(null);
 
   const [rules, setRules] = useState<GameRulesConfig>({
     doubleJump: true,
@@ -263,6 +283,15 @@ export const GameEngineEditor: React.FC = () => {
   rulesRef.current = rules;
   const sfxMutedRef = useRef<boolean>(sfxMuted);
   sfxMutedRef.current = sfxMuted;
+  const aiConfigRef = useRef<GameAiConfig>(aiConfig);
+  aiConfigRef.current = aiConfig;
+
+  const customBotFn = useMemo(
+    () => compileCustomBotFn(aiConfig.customBotRule, aiConfig.customBotJs),
+    [aiConfig.customBotRule, aiConfig.customBotJs],
+  );
+  const customBotFnRef = useRef(customBotFn);
+  customBotFnRef.current = customBotFn;
 
   const playStateRef = useRef({
     playing: false,
@@ -319,7 +348,7 @@ export const GameEngineEditor: React.FC = () => {
   const triggerPopup = useCallback((msg: string) => {
     setActionPopup(msg);
     if (popupTimerRef.current !== null) window.clearTimeout(popupTimerRef.current);
-    popupTimerRef.current = window.setTimeout(() => setActionPopup(null), 1500);
+    popupTimerRef.current = window.setTimeout(() => setActionPopup(null), 1600);
   }, []);
 
   const spawnParticleBurst = useCallback((pos: THREE.Vector3, colorHex: string, count = 10) => {
@@ -404,22 +433,13 @@ export const GameEngineEditor: React.FC = () => {
     }
   }, []);
 
-  // Sync music loop with isPlaying + musicEnabled
   useEffect(() => {
-    if (!musicLoopRef.current) {
-      musicLoopRef.current = new SynthMusicLoop();
-    }
-    if (isPlaying && musicEnabled && !sfxMuted) {
-      musicLoopRef.current.start();
-    } else {
-      musicLoopRef.current.stop();
-    }
-    return () => {
-      musicLoopRef.current?.stop();
-    };
+    if (!musicLoopRef.current) musicLoopRef.current = new SynthMusicLoop();
+    if (isPlaying && musicEnabled && !sfxMuted) musicLoopRef.current.start();
+    else musicLoopRef.current.stop();
+    return () => musicLoopRef.current?.stop();
   }, [isPlaying, musicEnabled, sfxMuted]);
 
-  // Sync Sky Theme
   useEffect(() => {
     const scene = sceneRef.current;
     const lights = lightsRef.current;
@@ -431,7 +451,6 @@ export const GameEngineEditor: React.FC = () => {
     lights.dir.color.set(sky.dir);
   }, [skyTheme]);
 
-  // Sync TransformControls gizmo + Grid Snap
   useEffect(() => {
     const scene = sceneRef.current;
     const tControls = transformRef.current;
@@ -462,7 +481,6 @@ export const GameEngineEditor: React.FC = () => {
     }
   }, [selectedObj, gizmoMode, snapSize, isPlaying, objects3d]);
 
-  // Initialize Three.js viewport + Engine Loop
   useEffect(() => {
     const host = canvasHostRef.current;
     if (!host) return;
@@ -563,9 +581,7 @@ export const GameEngineEditor: React.FC = () => {
       if (hits.length > 0) {
         let cur: THREE.Object3D | null = hits[0].object;
         while (cur && !cur.userData.objectId) cur = cur.parent;
-        if (cur?.userData.objectId) {
-          setSelectedObject3DId(cur.userData.objectId as string);
-        }
+        if (cur?.userData.objectId) setSelectedObject3DId(cur.userData.objectId as string);
       }
     };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -605,7 +621,6 @@ export const GameEngineEditor: React.FC = () => {
       const list = objectsRef.current;
       const curRules = rulesRef.current;
 
-      // Particles update
       for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
         p.life -= dt;
@@ -618,7 +633,6 @@ export const GameEngineEditor: React.FC = () => {
         }
       }
 
-      // Spin collectibles, powerups, portals
       for (const obj of list) {
         const grp = meshMapRef.current.get(obj.id);
         if (!grp) continue;
@@ -634,7 +648,6 @@ export const GameEngineEditor: React.FC = () => {
         if (ps.shootCd > 0) ps.shootCd -= dt;
         if (ps.shieldTimer > 0) ps.shieldTimer -= dt;
 
-        // Moving platforms
         for (const obj of list) {
           if (inferRole(obj) !== 'moving') continue;
           const grp = meshMapRef.current.get(obj.id);
@@ -649,22 +662,41 @@ export const GameEngineEditor: React.FC = () => {
           grp.position.z = obj.position.z + (axis === 'z' ? offset : 0);
         }
 
-        // Smart NPC AI (patrol / chase / turret)
+        // NPC AI (Companion + Custom JS AI + Chase + Turret + Patrol)
+        const customAiTick = customBotFnRef.current;
         for (const obj of list) {
           if (inferRole(obj) !== 'npc' || ps.defeatedNpcIds.has(obj.id)) continue;
           const grp = meshMapRef.current.get(obj.id);
           if (!grp) continue;
           const behavior = obj.npcBehavior ?? 'patrol';
           const speed = obj.moveSpeed ?? 2.6;
-          const distToPlayer = grp.position.distanceTo(ps.playerPos);
+          const dxP = ps.playerPos.x - grp.position.x;
+          const dzP = ps.playerPos.z - grp.position.z;
+          const distToPlayer = Math.hypot(dxP, dzP);
 
-          if (behavior === 'chase' && distToPlayer < 13) {
-            const dirVec = new THREE.Vector3().subVectors(ps.playerPos, grp.position);
-            dirVec.y = 0;
-            if (dirVec.length() > 0.35) {
-              dirVec.normalize();
-              grp.position.addScaledVector(dirVec, speed * 0.85 * dt);
-              grp.rotation.y = Math.atan2(-dirVec.x, -dirVec.z);
+          if (behavior === 'companion') {
+            const target = new THREE.Vector3(
+              ps.playerPos.x - 1.9,
+              ps.playerPos.y + 0.85 + Math.sin(ps.elapsed * 3) * 0.25,
+              ps.playerPos.z + 1.2,
+            );
+            grp.position.lerp(target, 0.045);
+            grp.rotation.y += dt * 1.6;
+          } else if (customAiTick) {
+            const out = customAiTick({
+              dist: distToPlayer,
+              dx: dxP,
+              dz: dzP,
+              elapsed: ps.elapsed,
+              baseSpeed: speed,
+            });
+            grp.position.x += out.vx * dt;
+            grp.position.z += out.vz * dt;
+          } else if (behavior === 'chase' && distToPlayer < 13) {
+            if (distToPlayer > 0.35) {
+              grp.position.x += (dxP / distToPlayer) * speed * 0.85 * dt;
+              grp.position.z += (dzP / distToPlayer) * speed * 0.85 * dt;
+              grp.rotation.y = Math.atan2(-dxP, -dzP);
             }
           } else if (behavior === 'turret') {
             grp.rotation.y += dt * 1.4;
@@ -677,9 +709,7 @@ export const GameEngineEditor: React.FC = () => {
               );
               orb.position.copy(grp.position);
               scene.add(orb);
-              const shotDir = new THREE.Vector3().subVectors(ps.playerPos, grp.position);
-              shotDir.y = 0;
-              shotDir.normalize();
+              const shotDir = new THREE.Vector3(dxP, 0, dzP).normalize();
               enemyShotsRef.current.push({ mesh: orb, dir: shotDir, life: 2.2 });
             } else {
               ps.npcFireCd.set(obj.id, cd);
@@ -690,14 +720,16 @@ export const GameEngineEditor: React.FC = () => {
           }
         }
 
-        // Player Projectiles vs NPCs
+        // Player Projectiles vs Enemy NPCs
         for (let i = projectilesRef.current.length - 1; i >= 0; i--) {
           const proj = projectilesRef.current[i];
           proj.life -= dt;
           proj.mesh.position.addScaledVector(proj.dir, 22 * dt);
           let hit = false;
           for (const obj of list) {
-            if (inferRole(obj) !== 'npc' || ps.defeatedNpcIds.has(obj.id)) continue;
+            if (inferRole(obj) !== 'npc' || obj.npcBehavior === 'companion' || ps.defeatedNpcIds.has(obj.id)) {
+              continue;
+            }
             const grp = meshMapRef.current.get(obj.id);
             if (!grp) continue;
             if (proj.mesh.position.distanceTo(grp.position) < 1.15) {
@@ -717,16 +749,11 @@ export const GameEngineEditor: React.FC = () => {
           }
         }
 
-        // Turret Enemy Orbs vs Player
         for (let i = enemyShotsRef.current.length - 1; i >= 0; i--) {
           const es = enemyShotsRef.current[i];
           es.life -= dt;
           es.mesh.position.addScaledVector(es.dir, 10.5 * dt);
-          if (
-            ps.shieldTimer <= 0 &&
-            ps.invuln <= 0 &&
-            es.mesh.position.distanceTo(ps.playerPos) < 0.95
-          ) {
+          if (ps.shieldTimer <= 0 && ps.invuln <= 0 && es.mesh.position.distanceTo(ps.playerPos) < 0.95) {
             ps.hp -= 1;
             ps.invuln = 1.0;
             ps.vy = 5.2;
@@ -770,7 +797,6 @@ export const GameEngineEditor: React.FC = () => {
             ps.walkPhase += dt * 12;
           }
 
-          // Animate articulated limbs (walk cycle / airborne tuck)
           const lArm = playerGrp.getObjectByName('leftArm');
           const rArm = playerGrp.getObjectByName('rightArm');
           const lLeg = playerGrp.getObjectByName('leftLeg');
@@ -808,7 +834,6 @@ export const GameEngineEditor: React.FC = () => {
           ps.playerPos.y += ps.vy * dt;
           ps.grounded = false;
 
-          // Solid & Moving platform AABB landing
           for (const obj of list) {
             if (!obj.visible) continue;
             const role = inferRole(obj);
@@ -834,7 +859,6 @@ export const GameEngineEditor: React.FC = () => {
             }
           }
 
-          // Bounce pads
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'bounce') continue;
             const grp = meshMapRef.current.get(obj.id);
@@ -849,7 +873,6 @@ export const GameEngineEditor: React.FC = () => {
             }
           }
 
-          // Out of bounds respawn
           if (ps.playerPos.y < -12) {
             ps.hp -= 1;
             ps.playerPos.copy(ps.spawnPos);
@@ -858,7 +881,6 @@ export const GameEngineEditor: React.FC = () => {
             triggerPopup('DÜŞTÜ! -1 CAN');
           }
 
-          // Power-Ups (Shield + Magnet + Speed)
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'powerup') continue;
             if (ps.powerupIds.has(obj.id)) continue;
@@ -871,11 +893,10 @@ export const GameEngineEditor: React.FC = () => {
               ps.score += 75;
               spawnParticleBurst(grp.position, '#818cf8', 15);
               playGameSfx('powerup', sfxMutedRef.current);
-              triggerPopup('KALKAN + MIKNATIS AKTİF (7s)!');
+              triggerPopup('KALKAN + MIKNATIS AKTİF!');
             }
           }
 
-          // Collectibles (with magnet attraction while power-up active!)
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'collectible') continue;
             if (ps.collectedIds.has(obj.id)) continue;
@@ -895,7 +916,6 @@ export const GameEngineEditor: React.FC = () => {
             }
           }
 
-          // Checkpoints
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'checkpoint') continue;
             if (ps.checkpointIds.has(obj.id)) continue;
@@ -910,13 +930,14 @@ export const GameEngineEditor: React.FC = () => {
             }
           }
 
-          // Hazards & NPC contact damage (blocked if Shield active!)
           if (ps.invuln > 0) ps.invuln -= dt;
           if (ps.shieldTimer <= 0) {
             for (const obj of list) {
               if (!obj.visible) continue;
               const role = inferRole(obj);
-              if (role === 'npc' && ps.defeatedNpcIds.has(obj.id)) continue;
+              if (role === 'npc' && (obj.npcBehavior === 'companion' || ps.defeatedNpcIds.has(obj.id))) {
+                continue;
+              }
               if (role !== 'hazard' && role !== 'npc') continue;
               const grp = meshMapRef.current.get(obj.id);
               if (!grp) continue;
@@ -932,7 +953,6 @@ export const GameEngineEditor: React.FC = () => {
             }
           }
 
-          // Goal portal check
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'goal') continue;
             const grp = meshMapRef.current.get(obj.id);
@@ -954,7 +974,6 @@ export const GameEngineEditor: React.FC = () => {
 
           playerGrp.position.copy(ps.playerPos);
 
-          // Camera Modes: TPS / Top-Down / FPS
           const camMode = cameraModeRef.current;
           if (camMode === 'fps') {
             camera.position.set(ps.playerPos.x, ps.playerPos.y + 1.38, ps.playerPos.z);
@@ -972,17 +991,12 @@ export const GameEngineEditor: React.FC = () => {
             controls.target.lerp(new THREE.Vector3(ps.playerPos.x, ps.playerPos.y, ps.playerPos.z), 0.16);
             controls.update();
           } else {
-            const desiredCam = new THREE.Vector3(
-              ps.playerPos.x,
-              ps.playerPos.y + 5.2,
-              ps.playerPos.z + 8.8,
-            );
+            const desiredCam = new THREE.Vector3(ps.playerPos.x, ps.playerPos.y + 5.2, ps.playerPos.z + 8.8);
             camera.position.lerp(desiredCam, 0.1);
             controls.target.lerp(new THREE.Vector3(ps.playerPos.x, ps.playerPos.y + 1, ps.playerPos.z), 0.14);
             controls.update();
           }
 
-          // Render 2D Radar Mini-Map
           const radarCanvas = radarCanvasRef.current;
           const rCtx = radarCanvas?.getContext('2d');
           if (rCtx && radarCanvas) {
@@ -1005,7 +1019,9 @@ export const GameEngineEditor: React.FC = () => {
                 role === 'collectible'
                   ? '#fbbf24'
                   : role === 'npc'
-                    ? '#a855f7'
+                    ? obj.npcBehavior === 'companion'
+                      ? '#2dd4bf'
+                      : '#a855f7'
                     : role === 'powerup'
                       ? '#818cf8'
                       : '#10b981';
@@ -1053,9 +1069,7 @@ export const GameEngineEditor: React.FC = () => {
       tControls.dispose();
       controls.dispose();
       renderer.dispose();
-      if (renderer.domElement.parentNode === host) {
-        host.removeChild(renderer.domElement);
-      }
+      if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
       meshMapRef.current.clear();
       sceneRef.current = null;
       transformRef.current = null;
@@ -1063,9 +1077,7 @@ export const GameEngineEditor: React.FC = () => {
   }, [rebuildSceneObjects, setSelectedObject3DId, skyTheme, spawnParticleBurst, triggerPopup, update3DObject]);
 
   useEffect(() => {
-    if (!isPlaying) {
-      rebuildSceneObjects();
-    }
+    if (!isPlaying) rebuildSceneObjects();
   }, [objects3d, isPlaying, rebuildSceneObjects]);
 
   useEffect(() => {
@@ -1083,15 +1095,10 @@ export const GameEngineEditor: React.FC = () => {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
       }
-      if (e.code === 'Space' && !keysRef.current['Space']) {
-        playStateRef.current.jumpQueued = true;
-      }
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-        triggerDash();
-      }
-      if (e.code === 'KeyF') {
-        fireProjectile();
-      }
+      if (e.code === 'Space' && !keysRef.current['Space']) playStateRef.current.jumpQueued = true;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') triggerDash();
+      if (e.code === 'KeyF') fireProjectile();
+      if (e.code === 'KeyE') setChatOpen((prev) => !prev);
       keysRef.current[e.code] = true;
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -1110,12 +1117,14 @@ export const GameEngineEditor: React.FC = () => {
     playStateRef.current.outcome = 'idle';
     keysRef.current = {};
     setIsPlaying(false);
+    setChatOpen(false);
     setActionPopup(null);
     setHud((prev) => ({ ...prev, outcome: 'idle', shieldActive: false }));
     rebuildSceneObjects();
   }, [rebuildSceneObjects]);
 
   const startPlaytest = useCallback(() => {
+    setOpenMenu(null);
     const list = objectsRef.current;
     const playerObj = list.find((o) => inferRole(o) === 'player');
     if (!playerObj) {
@@ -1188,29 +1197,82 @@ export const GameEngineEditor: React.FC = () => {
   }, [add3DObject, rebuildSceneObjects]);
 
   const handleLoadTemplate = (kind: 'platformer' | 'arena' | 'tower' | 'space') => {
+    setOpenMenu(null);
     if (isPlaying) stopPlaytest();
     const items = makeTemplate(kind);
     replace3DObjects(items);
     setSelectedObject3DId(items[0]?.id ?? null);
     if (kind === 'space') setSkyTheme('neon');
-    setStatusNotice(
-      kind === 'platformer'
-        ? 'Obby Parkur (Takipçi Bot + Power-Up + Checkpoint) yüklendi!'
-        : kind === 'tower'
-          ? 'Dikey Kule şablonu yüklendi. Taretlere dikkat edip zirveye tırmanın!'
-          : kind === 'space'
-            ? 'Uzay İstasyonu yüklendi! Mıknatıs + Taret + Hiper Trambolin hazır.'
-            : 'Savaş Arenası yüklendi. F tuşu ile düşmanları vurun!',
-    );
+    setStatusNotice(`Şablon yüklendi (${items.length} varlık). Oynat ile hemen deneyin!`);
   };
 
-  const handleAiGenerateLevel = () => {
+  const handleAiGenerateLevel = async () => {
     if (isPlaying) stopPlaytest();
-    const result = generateLevelFromPrompt(aiPrompt);
-    replace3DObjects(result.objects);
-    setSelectedObject3DId(result.objects[0]?.id ?? null);
-    if (result.skyTheme) setSkyTheme(result.skyTheme);
-    setStatusNotice(result.summary);
+    setAiBusy(true);
+    try {
+      const aiRes = await callGameAi('level', aiPrompt, aiConfig);
+      const result = generateLevelFromPrompt(aiPrompt, aiRes.levelSpec);
+      replace3DObjects(result.objects);
+      setSelectedObject3DId(result.objects[0]?.id ?? null);
+      if (result.skyTheme) setSkyTheme(result.skyTheme);
+      if (result.npcPersona) {
+        setAiConfig((prev) => ({ ...prev, systemPrompt: result.npcPersona || prev.systemPrompt }));
+      }
+      if (aiRes.usedFallback && aiRes.fallbackReason) {
+        setStatusNotice(`${result.summary} (${aiRes.fallbackReason})`);
+      } else {
+        setStatusNotice(`[${aiRes.model}] ${result.summary}`);
+      }
+    } catch {
+      const result = generateLevelFromPrompt(aiPrompt);
+      replace3DObjects(result.objects);
+      setSelectedObject3DId(result.objects[0]?.id ?? null);
+      if (result.skyTheme) setSkyTheme(result.skyTheme);
+      setStatusNotice(result.summary);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleTestAiConnection = async () => {
+    setAiBusy(true);
+    setAiTestNote(null);
+    try {
+      const res = await callGameAi(
+        'npc-chat',
+        'Merhaba! Kendini 1 kısa cümleyle tanıt.',
+        aiConfig,
+        { score: 0, coins: 0, totalCoins: 3, hp: 3 },
+      );
+      setAiTestNote(
+        res.usedFallback
+          ? `⚠️ ${res.fallbackReason} — Yanıt: "${res.reply}"`
+          : `✅ Bağlandı (${res.model}): "${res.reply}"`,
+      );
+    } catch (err) {
+      setAiTestNote(`Hata: ${(err as Error).message}`);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleSendInGameChat = async () => {
+    const question = chatInput.trim() || 'Bana bu bölüm için ipucu ver!';
+    setChatBusy(true);
+    try {
+      const res = await callGameAi('npc-chat', question, aiConfigRef.current, {
+        score: hud.score,
+        coins: hud.coins,
+        totalCoins: hud.totalCoins,
+        hp: hud.hp,
+      });
+      setChatReply(`[${res.model}] ${res.reply}`);
+      setChatInput('');
+    } catch {
+      setChatReply('AI rehber şu an yanıt veremedi.');
+    } finally {
+      setChatBusy(false);
+    }
   };
 
   const handleDuplicateSelected = () => {
@@ -1233,6 +1295,7 @@ export const GameEngineEditor: React.FC = () => {
       bounceForce: selectedObj.bounceForce,
       npcBehavior: selectedObj.npcBehavior,
       powerupType: selectedObj.powerupType,
+      aiPersona: selectedObj.aiPersona,
     });
     setStatusNotice(`"${selectedObj.name}" çoğaltıldı.`);
   };
@@ -1246,6 +1309,7 @@ export const GameEngineEditor: React.FC = () => {
   };
 
   const handleExportLevelJson = () => {
+    setOpenMenu(null);
     const data = JSON.stringify({ cameraMode, skyTheme, rules, objects3d }, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1254,7 +1318,7 @@ export const GameEngineEditor: React.FC = () => {
     a.download = `${(project.name || 'alpemox').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.alpemox-level.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setStatusNotice('Seviye JSON dosyası (.alpemox-level.json) kaydedildi.');
+    setStatusNotice('Seviye JSON (.alpemox-level.json) kaydedildi.');
   };
 
   const handleImportLevelJson = (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -1270,7 +1334,7 @@ export const GameEngineEditor: React.FC = () => {
           if (parsed.cameraMode) setCameraMode(parsed.cameraMode as CameraViewMode);
           if (parsed.skyTheme) setSkyTheme(parsed.skyTheme as SkyThemeId);
           if (parsed.rules) setRules(parsed.rules as GameRulesConfig);
-          setStatusNotice(`${file.name} başarıyla yüklendi (${parsed.objects3d.length} varlık).`);
+          setStatusNotice(`${file.name} yüklendi (${parsed.objects3d.length} varlık).`);
         }
       } catch {
         setStatusNotice('Geçersiz seviye JSON dosyası.');
@@ -1280,9 +1344,25 @@ export const GameEngineEditor: React.FC = () => {
     ev.target.value = '';
   };
 
-  const handleQuickAdd = (role: GameRole) => {
+  const handleQuickAdd = (role: GameRole | 'companion') => {
+    setOpenMenu(null);
     if (isPlaying) stopPlaytest();
     const offset = ((objects3d.length % 5) - 2) * 1.4;
+    if (role === 'companion') {
+      add3DObject('sphere', {
+        name: 'Akıllı AI Yoldaş',
+        gameRole: 'npc',
+        position: { x: offset, y: 1.2, z: 4 },
+        scale: { x: 0.85, y: 0.85, z: 0.85 },
+        color: '#2dd4bf',
+        moveSpeed: 3.2,
+        patrolRange: 2.5,
+        npcBehavior: 'companion',
+        aiPersona: aiConfig.systemPrompt,
+      });
+      setStatusNotice('Sahneye Akıllı AI Yoldaş eklendi! Playtest’te E tuşuyla konuşabilirsiniz.');
+      return;
+    }
     if (role === 'player') {
       add3DObject('mannequin', {
         name: 'Yeni Oyuncu',
@@ -1395,21 +1475,29 @@ export const GameEngineEditor: React.FC = () => {
     a.download = `${slug || 'alpemox-game'}-playable.html`;
     a.click();
     URL.revokeObjectURL(url);
-    setStatusNotice('Tek dosya oynanabilir 3D Web Oyunu (.HTML v3) indirildi!');
+    setStatusNotice('Tek dosya oynanabilir 3D Web Oyunu (.HTML) indirildi!');
   };
 
   const setVirtualPadKey = (code: string, active: boolean) => {
     keysRef.current[code] = active;
   };
 
+  const activeAiLabel =
+    aiConfig.provider === 'ollama'
+      ? `Ollama: ${aiConfig.ollamaModel}`
+      : aiConfig.provider === 'openai-compat'
+        ? `Özel AI: ${aiConfig.customModel}`
+        : 'Yerleşik AI';
+
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-[#080b12] text-slate-100 select-none">
-      {/* Row 1: Playtest, Gizmo + Grid Snap, Camera, Sky, Audio, Templates & Export */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0d121d] px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* Clean Single Top Toolbar */}
+      <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0d121d] px-3 py-2">
+        {/* Left: Play, Reset, Gizmo */}
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
             <Gamepad2 className="h-4 w-4" />
-            <span>Alpemox Game v3 ★</span>
+            <span>Alpemox Game</span>
           </div>
 
           {!isPlaying ? (
@@ -1420,7 +1508,7 @@ export const GameEngineEditor: React.FC = () => {
               className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
-              Oynat (Playtest)
+              Oynat
             </button>
           ) : (
             <button
@@ -1437,14 +1525,13 @@ export const GameEngineEditor: React.FC = () => {
           <button
             type="button"
             onClick={() => (isPlaying ? startPlaytest() : rebuildSceneObjects())}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-slate-200 hover:bg-white/10"
-            title="Sıfırla"
+            className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
+            title="Sahneyi Sıfırla"
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </button>
 
-          {/* Transform Gizmo Mode Switcher */}
-          <div className="flex items-center rounded-lg border border-white/10 bg-slate-900/90 p-0.5">
+          <div className="hidden sm:flex items-center rounded-lg border border-white/10 bg-slate-900/90 p-0.5">
             {(
               [
                 ['translate', 'Taşı', Move],
@@ -1469,147 +1556,10 @@ export const GameEngineEditor: React.FC = () => {
               </button>
             ))}
           </div>
-
-          {/* Grid Snap Toggle */}
-          <button
-            type="button"
-            data-testid="grid-snap-btn"
-            onClick={() => setSnapSize((s) => (s === 0 ? 0.5 : s === 0.5 ? 1 : 0))}
-            disabled={isPlaying}
-            className={`rounded-lg border px-2 py-1 text-[11px] font-medium ${
-              snapSize > 0
-                ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
-                : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
-            }`}
-            title="Gizmo Izgara Kilidi (Snap)"
-          >
-            Snap: {snapSize > 0 ? `${snapSize}m` : 'Kapalı'}
-          </button>
-
-          {/* Camera & Sky */}
-          <label className="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
-            <Camera className="h-3.5 w-3.5 text-sky-400" />
-            <select
-              data-testid="camera-mode-select"
-              value={cameraMode}
-              onChange={(e) => setCameraMode(e.target.value as CameraViewMode)}
-              className="bg-transparent text-xs text-slate-100 focus:outline-none"
-            >
-              <option value="tps" className="bg-slate-900">
-                3. Şahıs (TPS)
-              </option>
-              <option value="topdown" className="bg-slate-900">
-                Kuşbakışı
-              </option>
-              <option value="fps" className="bg-slate-900">
-                FPS Kamera
-              </option>
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
-            <Sun className="h-3.5 w-3.5 text-amber-400" />
-            <select
-              data-testid="sky-theme-select"
-              value={skyTheme}
-              onChange={(e) => setSkyTheme(e.target.value as SkyThemeId)}
-              className="bg-transparent text-xs text-slate-100 focus:outline-none"
-            >
-              {Object.entries(SKY_THEMES).map(([id, cfg]) => (
-                <option key={id} value={id} className="bg-slate-900">
-                  {cfg.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Synth Music & Mute */}
-          <button
-            type="button"
-            data-testid="music-toggle-btn"
-            onClick={() => setMusicEnabled((v) => !v)}
-            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
-              musicEnabled
-                ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
-                : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
-            }`}
-            title="Playtest Synth Müzik"
-          >
-            <Music className="h-3 w-3" /> Müzik
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSfxMuted((v) => !v)}
-            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
-            title={sfxMuted ? 'Sesi Aç' : 'Sesi Kapat'}
-          >
-            {sfxMuted ? <VolumeX className="h-3.5 w-3.5 text-rose-400" /> : <Volume2 className="h-3.5 w-3.5 text-sky-300" />}
-          </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleLoadTemplate('platformer')}
-            data-testid="template-platformer-btn"
-            className="flex items-center gap-1 rounded-lg border border-sky-400/30 bg-sky-500/10 px-2 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Obby Parkur
-          </button>
-          <button
-            type="button"
-            onClick={() => handleLoadTemplate('arena')}
-            data-testid="template-arena-btn"
-            className="flex items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20"
-          >
-            <Trophy className="h-3.5 w-3.5" />
-            Savaş Arenası
-          </button>
-          <button
-            type="button"
-            onClick={() => handleLoadTemplate('tower')}
-            data-testid="template-tower-btn"
-            className="flex items-center gap-1 rounded-lg border border-lime-400/30 bg-lime-500/10 px-2 py-1.5 text-xs font-medium text-lime-200 hover:bg-lime-500/20"
-          >
-            <Zap className="h-3.5 w-3.5" />
-            Dikey Kule
-          </button>
-          <button
-            type="button"
-            onClick={() => handleLoadTemplate('space')}
-            data-testid="template-space-btn"
-            className="flex items-center gap-1 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20"
-          >
-            <Rocket className="h-3.5 w-3.5" />
-            Uzay İstasyonu
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewportMode('3d')}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-slate-300 hover:bg-white/10"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            3D Stage
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportHtml}
-            data-testid="export-html-game-btn"
-            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow hover:brightness-110 transition"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Oyunu İndir (.HTML)
-          </button>
-        </div>
-      </div>
-
-      {/* Row 2: Prompt-to-3D Generator + Quick Palette + Save/Load Level */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0a0e17] px-3 py-2">
-        <div className="flex flex-1 min-w-[260px] max-w-xl items-center gap-1.5">
+        {/* Center: Clean AI Architect Bar */}
+        <div className="flex flex-1 min-w-[240px] max-w-lg items-center gap-1.5">
           <div className="flex flex-1 items-center gap-2 rounded-lg border border-purple-400/30 bg-slate-900/90 px-2.5 py-1">
             <Wand2 className="h-3.5 w-3.5 shrink-0 text-purple-400" />
             <input
@@ -1618,86 +1568,205 @@ export const GameEngineEditor: React.FC = () => {
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAiGenerateLevel();
+                if (e.key === 'Enter') void handleAiGenerateLevel();
               }}
-              placeholder="Örn: 6 altın, trambolin, hareketli platform ve 2 takipçi botlu kule..."
+              placeholder="AI'a nasıl bir 3D oyun istediğini yaz..."
               className="w-full bg-transparent text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none"
             />
           </div>
           <button
             type="button"
+            disabled={aiBusy}
             data-testid="ai-generate-level-btn"
-            onClick={handleAiGenerateLevel}
-            className="shrink-0 rounded-lg bg-purple-500/20 border border-purple-400/40 px-2.5 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/30 transition"
+            onClick={() => void handleAiGenerateLevel()}
+            className="shrink-0 rounded-lg bg-purple-500/25 border border-purple-400/40 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/35 disabled:opacity-50"
           >
-            Prompt’tan 3D Seviye Üret
+            {aiBusy ? 'Kuruluyor...' : 'AI ile Kur'}
+          </button>
+          <button
+            type="button"
+            data-testid="ai-status-pill"
+            onClick={() => setRightTab('ai')}
+            className="hidden lg:flex items-center gap-1 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20"
+            title="Yerel Ollama veya kendi AI modelini bağla"
+          >
+            <Brain className="h-3.5 w-3.5" />
+            <span className="max-w-[110px] truncate">{activeAiLabel}</span>
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <button type="button" onClick={() => handleQuickAdd('player')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <User className="h-3 w-3 text-sky-400" /> +Oyuncu
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('solid')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <Box className="h-3 w-3 text-slate-300" /> +Zemin
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('moving')} className="flex items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-1 text-[11px] text-cyan-200 hover:bg-cyan-500/20">
-            <Move className="h-3 w-3" /> +Hareketli
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('bounce')} className="flex items-center gap-1 rounded border border-lime-400/30 bg-lime-500/10 px-1.5 py-1 text-[11px] text-lime-200 hover:bg-lime-500/20">
-            <Zap className="h-3 w-3" /> +Trambolin
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('powerup')} className="flex items-center gap-1 rounded border border-indigo-400/30 bg-indigo-500/10 px-1.5 py-1 text-[11px] text-indigo-200 hover:bg-indigo-500/20">
-            <Magnet className="h-3 w-3" /> +Güç
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('collectible')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <Coins className="h-3 w-3 text-amber-400" /> +Altın
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('checkpoint')} className="flex items-center gap-1 rounded border border-teal-400/30 bg-teal-500/10 px-1.5 py-1 text-[11px] text-teal-200 hover:bg-teal-500/20">
-            <CheckCircle2 className="h-3 w-3" /> +Kayıt
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('hazard')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <AlertTriangle className="h-3 w-3 text-rose-400" /> +Engel
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('npc')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <Bot className="h-3 w-3 text-purple-400" /> +Bot
-          </button>
-          <button type="button" onClick={() => handleQuickAdd('goal')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
-            <Flag className="h-3 w-3 text-emerald-400" /> +Portal
-          </button>
+        {/* Right: Clean Dropdown Menus + Export */}
+        <div className="flex items-center gap-1.5">
+          {/* Templates Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="templates-menu-btn"
+              onClick={() => setOpenMenu((m) => (m === 'templates' ? null : 'templates'))}
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+              Şablonlar
+              <ChevronDown className="h-3 w-3 opacity-70" />
+            </button>
+            {openMenu === 'templates' && (
+              <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-white/15 bg-[#0f172a] p-1.5 shadow-2xl space-y-1">
+                <button type="button" data-testid="template-platformer-btn" onClick={() => handleLoadTemplate('platformer')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-white/10">
+                  Obby Parkur
+                </button>
+                <button type="button" data-testid="template-arena-btn" onClick={() => handleLoadTemplate('arena')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-white/10">
+                  Savaş Arenası
+                </button>
+                <button type="button" data-testid="template-tower-btn" onClick={() => handleLoadTemplate('tower')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-white/10">
+                  Dikey Kule
+                </button>
+                <button type="button" data-testid="template-space-btn" onClick={() => handleLoadTemplate('space')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-white/10">
+                  Uzay İstasyonu
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Add Entity Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="add-entity-menu-btn"
+              onClick={() => setOpenMenu((m) => (m === 'add' ? null : 'add'))}
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            >
+              <Plus className="h-3.5 w-3.5 text-sky-400" />
+              Ekle
+              <ChevronDown className="h-3 w-3 opacity-70" />
+            </button>
+            {openMenu === 'add' && (
+              <div className="absolute right-0 mt-1.5 w-52 rounded-xl border border-white/15 bg-[#0f172a] p-1.5 shadow-2xl space-y-0.5 text-xs">
+                <button type="button" onClick={() => handleQuickAdd('companion')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-teal-300 hover:bg-teal-500/15">
+                  🤖 Akıllı AI Yoldaş
+                </button>
+                <button type="button" onClick={() => handleQuickAdd('player')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Oyuncu</button>
+                <button type="button" onClick={() => handleQuickAdd('solid')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Sabit Platform</button>
+                <button type="button" onClick={() => handleQuickAdd('moving')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Hareketli Platform</button>
+                <button type="button" onClick={() => handleQuickAdd('bounce')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Trambolin</button>
+                <button type="button" onClick={() => handleQuickAdd('powerup')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Power-Up (Kalkan/Mıknatıs)</button>
+                <button type="button" onClick={() => handleQuickAdd('collectible')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Altın / Ödül</button>
+                <button type="button" onClick={() => handleQuickAdd('checkpoint')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Checkpoint</button>
+                <button type="button" onClick={() => handleQuickAdd('hazard')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Engel / Tuzak</button>
+                <button type="button" onClick={() => handleQuickAdd('npc')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Düşman Bot (AI)</button>
+                <button type="button" onClick={() => handleQuickAdd('goal')} className="flex w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-white/10">Bitiş Portalı</button>
+              </div>
+            )}
+          </div>
+
+          {/* Settings Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="settings-menu-btn"
+              onClick={() => setOpenMenu((m) => (m === 'settings' ? null : 'settings'))}
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            >
+              <Settings2 className="h-3.5 w-3.5 text-slate-300" />
+              Ayarlar
+            </button>
+            {openMenu === 'settings' && (
+              <div className="absolute right-0 mt-1.5 w-64 rounded-xl border border-white/15 bg-[#0f172a] p-3 shadow-2xl space-y-2.5 text-xs">
+                <label className="block space-y-1">
+                  <span className="text-[11px] text-slate-400">Kamera Açısı</span>
+                  <select
+                    data-testid="camera-mode-select"
+                    value={cameraMode}
+                    onChange={(e) => setCameraMode(e.target.value as CameraViewMode)}
+                    className="w-full rounded-lg border border-white/15 bg-slate-900 px-2 py-1.5 text-xs"
+                  >
+                    <option value="tps">3. Şahıs (TPS)</option>
+                    <option value="topdown">Kuşbakışı (Top-Down)</option>
+                    <option value="fps">Birinci Şahıs (FPS)</option>
+                  </select>
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-[11px] text-slate-400">Atmosfer / Gökyüzü</span>
+                  <select
+                    data-testid="sky-theme-select"
+                    value={skyTheme}
+                    onChange={(e) => setSkyTheme(e.target.value as SkyThemeId)}
+                    className="w-full rounded-lg border border-white/15 bg-slate-900 px-2 py-1.5 text-xs"
+                  >
+                    {Object.entries(SKY_THEMES).map(([id, cfg]) => (
+                      <option key={id} value={id}>
+                        {cfg.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-300">Izgara Kilidi (Snap)</span>
+                  <button
+                    type="button"
+                    data-testid="grid-snap-btn"
+                    onClick={() => setSnapSize((s) => (s === 0 ? 0.5 : s === 0.5 ? 1 : 0))}
+                    className="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-[11px]"
+                  >
+                    {snapSize > 0 ? `${snapSize}m` : 'Kapalı'}
+                  </button>
+                </div>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-slate-300">Chiptune Müzik</span>
+                  <input
+                    type="checkbox"
+                    checked={musicEnabled}
+                    onChange={(e) => setMusicEnabled(e.target.checked)}
+                    className="accent-emerald-400"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-slate-300">Ses Efektlerini Sustur</span>
+                  <input
+                    type="checkbox"
+                    checked={sfxMuted}
+                    onChange={(e) => setSfxMuted(e.target.checked)}
+                    className="accent-rose-400"
+                  />
+                </label>
+
+                <div className="flex gap-1.5 border-t border-white/10 pt-2">
+                  <button type="button" onClick={handleExportLevelJson} className="flex-1 rounded-lg border border-white/15 bg-white/5 py-1.5 hover:bg-white/10">
+                    .JSON Kaydet
+                  </button>
+                  <button type="button" onClick={() => levelFileInputRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 py-1.5 hover:bg-white/10">
+                    <Upload className="h-3 w-3" /> Yükle
+                  </button>
+                  <button type="button" onClick={() => { setOpenMenu(null); setViewportMode('3d'); }} className="rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 hover:bg-white/10" title="3D Stage'e Git">
+                    <Layers className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+            <input ref={levelFileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportLevelJson} />
+          </div>
 
           <button
             type="button"
-            onClick={handleExportLevelJson}
-            className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10"
-            title="Seviyeyi JSON Kaydet"
+            onClick={handleExportHtml}
+            data-testid="export-html-game-btn"
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow hover:brightness-110 transition"
           >
-            .JSON
+            <Download className="h-3.5 w-3.5" />
+            İndir (.HTML)
           </button>
-          <button
-            type="button"
-            onClick={() => levelFileInputRef.current?.click()}
-            className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10"
-            title="Seviye JSON Yükle"
-          >
-            <Upload className="h-3 w-3" />
-          </button>
-          <input
-            ref={levelFileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleImportLevelJson}
-          />
         </div>
       </div>
 
-      {/* Main Split */}
+      {/* Main Workspace */}
       <div className="flex flex-1 min-h-0">
-        <div className="relative flex-1 min-w-0 bg-[#070a10]">
+        <div className="relative flex-1 min-w-0 bg-[#070a10]" onMouseDown={() => setOpenMenu(null)}>
           <div ref={canvasHostRef} className="h-full w-full" />
 
-          {/* Live HUD + FPS Telemetry */}
+          {/* Clean Live HUD */}
           <div
             data-testid="game-hud"
             className="pointer-events-none absolute top-4 left-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-white/15 bg-slate-950/82 px-3.5 py-2 text-xs backdrop-blur-md shadow-xl"
@@ -1745,7 +1814,6 @@ export const GameEngineEditor: React.FC = () => {
             </span>
           </div>
 
-          {/* 2D Live Radar Mini-Map during Playtest */}
           {isPlaying && (
             <canvas
               ref={radarCanvasRef}
@@ -1758,7 +1826,7 @@ export const GameEngineEditor: React.FC = () => {
 
           {isPlaying && (
             <div className="pointer-events-none absolute top-14 left-4 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] text-slate-300 backdrop-blur">
-              WASD/Ok: Yürü • Space: 2x Zıpla • Shift: Dash • F: Ateş Et
+              WASD: Yürü • Space: 2x Zıpla • Shift: Dash • F: Ateş • E: AI Rehberle Konuş
             </div>
           )}
 
@@ -1774,55 +1842,80 @@ export const GameEngineEditor: React.FC = () => {
             </div>
           )}
 
+          {/* In-Game Live AI Companion Chat Overlay */}
+          {isPlaying && chatOpen && (
+            <div
+              data-testid="ingame-ai-chat"
+              className="absolute top-24 right-4 z-20 w-80 rounded-2xl border border-teal-400/40 bg-slate-950/92 p-3.5 shadow-2xl backdrop-blur-md space-y-2.5"
+            >
+              <div className="flex items-center justify-between text-xs font-bold text-teal-300">
+                <span className="flex items-center gap-1.5">
+                  <Brain className="h-4 w-4" /> AI Rehber ({activeAiLabel})
+                </span>
+                <button type="button" onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white">
+                  ✕
+                </button>
+              </div>
+              {chatReply && (
+                <div data-testid="ingame-ai-reply" className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-xs text-slate-100 leading-relaxed">
+                  {chatReply}
+                </div>
+              )}
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  data-testid="ingame-ai-input"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSendInGameChat();
+                  }}
+                  placeholder="AI karaktere bir şey sor..."
+                  className="flex-1 rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-white focus:border-teal-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  data-testid="ingame-ai-send"
+                  disabled={chatBusy}
+                  onClick={() => void handleSendInGameChat()}
+                  className="rounded-lg bg-teal-500 px-2.5 py-1.5 text-slate-950 font-bold hover:bg-teal-400 disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* On-Screen Playtest Controls */}
           {isPlaying && hud.outcome === 'playing' && (
             <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-end justify-between gap-2 pointer-events-none">
               <div className="pointer-events-auto grid grid-cols-3 gap-1 rounded-2xl border border-white/15 bg-slate-950/75 p-1.5 backdrop-blur">
                 <div />
-                <button
-                  type="button"
-                  data-testid="dpad-up"
-                  onMouseDown={() => setVirtualPadKey('PadUp', true)}
-                  onMouseUp={() => setVirtualPadKey('PadUp', false)}
-                  onMouseLeave={() => setVirtualPadKey('PadUp', false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30 active:bg-sky-500/50"
-                >
+                <button type="button" data-testid="dpad-up" onMouseDown={() => setVirtualPadKey('PadUp', true)} onMouseUp={() => setVirtualPadKey('PadUp', false)} onMouseLeave={() => setVirtualPadKey('PadUp', false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30">
                   <ArrowUp className="h-4 w-4" />
                 </button>
                 <div />
-                <button
-                  type="button"
-                  data-testid="dpad-left"
-                  onMouseDown={() => setVirtualPadKey('PadLeft', true)}
-                  onMouseUp={() => setVirtualPadKey('PadLeft', false)}
-                  onMouseLeave={() => setVirtualPadKey('PadLeft', false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30 active:bg-sky-500/50"
-                >
+                <button type="button" data-testid="dpad-left" onMouseDown={() => setVirtualPadKey('PadLeft', true)} onMouseUp={() => setVirtualPadKey('PadLeft', false)} onMouseLeave={() => setVirtualPadKey('PadLeft', false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30">
                   <ArrowLeft className="h-4 w-4" />
                 </button>
-                <button
-                  type="button"
-                  data-testid="dpad-down"
-                  onMouseDown={() => setVirtualPadKey('PadDown', true)}
-                  onMouseUp={() => setVirtualPadKey('PadDown', false)}
-                  onMouseLeave={() => setVirtualPadKey('PadDown', false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30 active:bg-sky-500/50"
-                >
+                <button type="button" data-testid="dpad-down" onMouseDown={() => setVirtualPadKey('PadDown', true)} onMouseUp={() => setVirtualPadKey('PadDown', false)} onMouseLeave={() => setVirtualPadKey('PadDown', false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30">
                   <ArrowDown className="h-4 w-4" />
                 </button>
-                <button
-                  type="button"
-                  data-testid="dpad-right"
-                  onMouseDown={() => setVirtualPadKey('PadRight', true)}
-                  onMouseUp={() => setVirtualPadKey('PadRight', false)}
-                  onMouseLeave={() => setVirtualPadKey('PadRight', false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30 active:bg-sky-500/50"
-                >
+                <button type="button" data-testid="dpad-right" onMouseDown={() => setVirtualPadKey('PadRight', true)} onMouseUp={() => setVirtualPadKey('PadRight', false)} onMouseLeave={() => setVirtualPadKey('PadRight', false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-sky-500/30">
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
 
               <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="dpad-ai-talk"
+                  onClick={() => setChatOpen((prev) => !prev)}
+                  className="flex h-11 px-3 items-center justify-center rounded-xl border border-teal-400/40 bg-teal-500/20 text-[11px] font-bold text-teal-200 backdrop-blur hover:bg-teal-500/35"
+                >
+                  <MessageSquare className="mr-1 h-3.5 w-3.5" /> AI SOR (E)
+                </button>
+
                 <button
                   type="button"
                   data-testid="dpad-jump"
@@ -1868,11 +1961,7 @@ export const GameEngineEditor: React.FC = () => {
           {isPlaying && (hud.outcome === 'won' || hud.outcome === 'lost') && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/15 bg-[#0f172a] p-7 text-center shadow-2xl">
-                <Trophy
-                  className={`h-11 w-11 ${
-                    hud.outcome === 'won' ? 'text-emerald-400' : 'text-rose-400'
-                  }`}
-                />
+                <Trophy className={`h-11 w-11 ${hud.outcome === 'won' ? 'text-emerald-400' : 'text-rose-400'}`} />
                 <h3 className="text-xl font-bold text-white">
                   {hud.outcome === 'won' ? 'Bölüm Tamamlandı!' : 'Oyun Bitti'}
                 </h3>
@@ -1884,18 +1973,10 @@ export const GameEngineEditor: React.FC = () => {
                   • Süre: <span className="font-mono">{hud.elapsed.toFixed(1)}s</span>
                 </p>
                 <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={startPlaytest}
-                    className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400"
-                  >
+                  <button type="button" onClick={startPlaytest} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400">
                     Tekrar Oyna
                   </button>
-                  <button
-                    type="button"
-                    onClick={stopPlaytest}
-                    className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10"
-                  >
+                  <button type="button" onClick={stopPlaytest} className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10">
                     Editöre Dön
                   </button>
                 </div>
@@ -1904,13 +1985,13 @@ export const GameEngineEditor: React.FC = () => {
           )}
         </div>
 
-        {/* Right Side: Entities & Visual Event Rules Inspector */}
+        {/* Clean 3-Tab Right Inspector: Varlıklar | Oyun AI | Kurallar */}
         <aside className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-[#0b0f18]">
-          <div className="grid grid-cols-2 border-b border-white/10 bg-[#0d121d] p-1.5 gap-1">
+          <div className="grid grid-cols-3 border-b border-white/10 bg-[#0d121d] p-1.5 gap-1">
             <button
               type="button"
               onClick={() => setRightTab('entities')}
-              className={`rounded-lg py-1.5 text-xs font-semibold transition ${
+              className={`rounded-lg py-1.5 text-[11px] font-semibold transition ${
                 rightTab === 'entities'
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1920,20 +2001,33 @@ export const GameEngineEditor: React.FC = () => {
             </button>
             <button
               type="button"
+              data-testid="ai-tab-btn"
+              onClick={() => setRightTab('ai')}
+              className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold transition ${
+                rightTab === 'ai'
+                  ? 'bg-teal-500/20 text-teal-300 border border-teal-400/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Brain className="h-3.5 w-3.5" />
+              Oyun AI
+            </button>
+            <button
+              type="button"
               data-testid="rules-tab-btn"
               onClick={() => setRightTab('rules')}
-              className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+              className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold transition ${
                 rightTab === 'rules'
                   ? 'bg-purple-500/20 text-purple-300 border border-purple-400/30'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Sliders className="h-3.5 w-3.5" />
-              Olay Kuralları
+              Kurallar
             </button>
           </div>
 
-          {rightTab === 'entities' ? (
+          {rightTab === 'entities' && (
             <>
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {objects3d.map((obj) => {
@@ -1955,19 +2049,11 @@ export const GameEngineEditor: React.FC = () => {
                         <div className="truncate text-xs font-medium text-slate-100">{obj.name}</div>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           <span className={`inline-block rounded border px-1.5 py-0.2 text-[10px] ${meta.badge}`}>
-                            {meta.label}
+                            {obj.npcBehavior === 'companion' ? 'AI Yoldaş' : meta.label}
                           </span>
-                          {role === 'npc' && obj.npcBehavior && (
-                            <span className="text-[10px] uppercase text-purple-300">
-                              {obj.npcBehavior}
-                            </span>
-                          )}
                         </div>
                       </div>
-                      <span
-                        className="h-3 w-3 shrink-0 rounded-full border border-white/20"
-                        style={{ backgroundColor: obj.color }}
-                      />
+                      <span className="h-3 w-3 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: obj.color }} />
                     </button>
                   );
                 })}
@@ -1978,50 +2064,24 @@ export const GameEngineEditor: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white truncate">{selectedObj.name}</span>
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={handleFocusSelected}
-                        className="rounded p-1 text-cyan-400 hover:bg-cyan-500/15"
-                        title="Kamerayı Odakla"
-                      >
+                      <button type="button" onClick={handleFocusSelected} className="rounded p-1 text-cyan-400 hover:bg-cyan-500/15" title="Odakla">
                         <Focus className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        data-testid="duplicate-entity-btn"
-                        onClick={handleDuplicateSelected}
-                        className="rounded p-1 text-amber-400 hover:bg-amber-500/15"
-                        title="Varlığı Çoğalt"
-                      >
+                      <button type="button" data-testid="duplicate-entity-btn" onClick={handleDuplicateSelected} className="rounded p-1 text-amber-400 hover:bg-amber-500/15" title="Çoğalt">
                         <Copy className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleQuickAdd(inferRole(selectedObj))}
-                        className="rounded p-1 text-sky-400 hover:bg-sky-500/15"
-                        title="Benzer Varlık Ekle"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => delete3DObject(selectedObj.id)}
-                        className="rounded p-1 text-rose-400 hover:bg-rose-500/15"
-                        title="Varlığı Sil"
-                      >
+                      <button type="button" onClick={() => delete3DObject(selectedObj.id)} className="rounded p-1 text-rose-400 hover:bg-rose-500/15" title="Sil">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
 
                   <label className="block space-y-1">
-                    <span className="text-[11px] text-slate-400">Oyun Rolü (Game Role)</span>
+                    <span className="text-[11px] text-slate-400">Oyun Rolü</span>
                     <select
                       value={inferRole(selectedObj)}
-                      onChange={(e) =>
-                        update3DObject(selectedObj.id, { gameRole: e.target.value as GameRole })
-                      }
-                      className="w-full rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 focus:border-sky-400 focus:outline-none"
+                      onChange={(e) => update3DObject(selectedObj.id, { gameRole: e.target.value as GameRole })}
+                      className="w-full rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100"
                     >
                       {Object.entries(ROLE_META).map(([key, info]) => (
                         <option key={key} value={key}>
@@ -2033,19 +2093,20 @@ export const GameEngineEditor: React.FC = () => {
 
                   {inferRole(selectedObj) === 'npc' && (
                     <label className="block space-y-1">
-                      <span className="text-[11px] text-slate-400">Bot Yapay Zeka Modu (AI)</span>
+                      <span className="text-[11px] text-slate-400">Bot Yapay Zekası (AI)</span>
                       <select
                         data-testid="npc-behavior-select"
                         value={selectedObj.npcBehavior ?? 'patrol'}
                         onChange={(e) =>
                           update3DObject(selectedObj.id, {
-                            npcBehavior: e.target.value as 'patrol' | 'chase' | 'turret',
+                            npcBehavior: e.target.value as 'patrol' | 'chase' | 'turret' | 'companion',
                           })
                         }
                         className="w-full rounded-lg border border-purple-400/30 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100"
                       >
+                        <option value="companion">Dost AI Yoldaş (Konuşur)</option>
                         <option value="patrol">Devriye Gez (Patrol)</option>
-                        <option value="chase">Oyuncuyu Takip Et (Chase AI)</option>
+                        <option value="chase">Takipçi Avcı (Chase AI)</option>
                         <option value="turret">Ateş Eden Taret (Turret)</option>
                       </select>
                     </label>
@@ -2061,10 +2122,7 @@ export const GameEngineEditor: React.FC = () => {
                           value={Number(selectedObj.position[axis].toFixed(2))}
                           onChange={(e) =>
                             update3DObject(selectedObj.id, {
-                              position: {
-                                ...selectedObj.position,
-                                [axis]: Number(e.target.value) || 0,
-                              },
+                              position: { ...selectedObj.position, [axis]: Number(e.target.value) || 0 },
                             })
                           }
                           className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
@@ -2073,138 +2131,186 @@ export const GameEngineEditor: React.FC = () => {
                     ))}
                   </div>
 
-                  {(inferRole(selectedObj) === 'player' ||
-                    inferRole(selectedObj) === 'npc' ||
-                    inferRole(selectedObj) === 'moving') && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="block space-y-0.5">
-                        <span className="text-[10px] text-slate-400">Hareket Hızı</span>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0.5"
-                          max="25"
-                          value={selectedObj.moveSpeed ?? 5}
-                          onChange={(e) =>
-                            update3DObject(selectedObj.id, { moveSpeed: Number(e.target.value) || 5 })
-                          }
-                          className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                        />
-                      </label>
-
-                      {inferRole(selectedObj) === 'player' ? (
-                        <label className="block space-y-0.5">
-                          <span className="text-[10px] text-slate-400">Zıplama Gücü</span>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="2"
-                            max="25"
-                            value={selectedObj.jumpForce ?? 10.6}
-                            onChange={(e) =>
-                              update3DObject(selectedObj.id, { jumpForce: Number(e.target.value) || 10 })
-                            }
-                            className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                          />
-                        </label>
-                      ) : (
-                        <label className="block space-y-0.5">
-                          <span className="text-[10px] text-slate-400">Hareket Mesafesi</span>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0.5"
-                            max="18"
-                            value={selectedObj.patrolRange ?? 3}
-                            onChange={(e) =>
-                              update3DObject(selectedObj.id, { patrolRange: Number(e.target.value) || 3 })
-                            }
-                            className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                          />
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  {inferRole(selectedObj) === 'moving' && (
-                    <label className="block space-y-0.5">
-                      <span className="text-[10px] text-slate-400">Platform Ekseni</span>
-                      <select
-                        value={selectedObj.patrolAxis ?? 'x'}
-                        onChange={(e) =>
-                          update3DObject(selectedObj.id, {
-                            patrolAxis: e.target.value as 'x' | 'y' | 'z',
-                          })
-                        }
-                        className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                      >
-                        <option value="x">Yatay (X Ekseni)</option>
-                        <option value="y">Asansör (Y Ekseni)</option>
-                        <option value="z">İleri/Geri (Z Ekseni)</option>
-                      </select>
-                    </label>
-                  )}
-
-                  {inferRole(selectedObj) === 'bounce' && (
-                    <label className="block space-y-0.5">
-                      <span className="text-[10px] text-slate-400">Trambolin İtme Gücü</span>
-                      <input
-                        type="number"
-                        step="1"
-                        min="8"
-                        max="35"
-                        value={selectedObj.bounceForce ?? 18}
-                        onChange={(e) =>
-                          update3DObject(selectedObj.id, { bounceForce: Number(e.target.value) || 18 })
-                        }
-                        className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                      />
-                    </label>
-                  )}
-
                   <label className="flex items-center justify-between text-[11px] text-slate-300">
                     <span>Renk</span>
-                    <input
-                      type="color"
-                      value={selectedObj.color}
-                      onChange={(e) => update3DObject(selectedObj.id, { color: e.target.value })}
-                      className="h-6 w-12 cursor-pointer rounded border border-white/20 bg-transparent"
-                    />
+                    <input type="color" value={selectedObj.color} onChange={(e) => update3DObject(selectedObj.id, { color: e.target.value })} className="h-6 w-12 cursor-pointer rounded border border-white/20 bg-transparent" />
                   </label>
                 </div>
               )}
             </>
-          ) : (
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 text-xs">
-              <div className="rounded-xl border border-purple-400/25 bg-purple-500/10 p-3">
-                <div className="font-bold text-purple-200">Kodsuz Olay Kuralları (GDevelop Tarzı)</div>
-                <p className="mt-1 text-[11px] text-slate-300">
-                  EĞER → YAP kuralları hem canlı Playtest’te hem indirilen .HTML oyununda geçerlidir.
+          )}
+
+          {rightTab === 'ai' && (
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+              <div className="rounded-xl border border-teal-400/30 bg-teal-500/10 p-3 space-y-1">
+                <div className="font-bold text-teal-200 flex items-center gap-1.5">
+                  <Brain className="h-4 w-4" /> Kendi Açık Kaynak AI’ını Bağla
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Yerel <strong>Ollama</strong>, <strong>LM Studio</strong> veya kendi API’ını ekleyip oyuna canlı yapay zeka beyni kazandır.
                 </p>
               </div>
 
+              <label className="block space-y-1">
+                <span className="text-[11px] text-slate-400">AI Motoru Seçimi</span>
+                <select
+                  data-testid="ai-provider-select"
+                  value={aiConfig.provider}
+                  onChange={(e) =>
+                    setAiConfig((prev) => ({ ...prev, provider: e.target.value as GameAiProvider }))
+                  }
+                  className="w-full rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100"
+                >
+                  <option value="builtin">Yerleşik Alpemox AI (Kurulumsuz)</option>
+                  <option value="ollama">Yerel Açık Kaynak Ollama (Llama/Qwen/Mistral)</option>
+                  <option value="openai-compat">Özel AI Endpoint (LM Studio / OpenAI Uyumlu)</option>
+                </select>
+              </label>
+
+              {aiConfig.provider === 'ollama' && (
+                <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Ollama Durumu:</span>
+                    <span className={ollamaReachable ? 'text-emerald-400 font-semibold' : 'text-amber-300'}>
+                      {ollamaReachable ? `Bağlı (${ollamaModels.length} model)` : 'Yerel Port Bekleniyor'}
+                    </span>
+                  </div>
+                  <label className="block space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Ollama URL</span>
+                    <input
+                      type="text"
+                      value={aiConfig.ollamaUrl}
+                      onChange={(e) => setAiConfig((p) => ({ ...p, ollamaUrl: e.target.value }))}
+                      className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                  <label className="block space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Açık Kaynak Model Adı</span>
+                    <input
+                      type="text"
+                      data-testid="ollama-model-input"
+                      value={aiConfig.ollamaModel}
+                      onChange={(e) => setAiConfig((p) => ({ ...p, ollamaModel: e.target.value }))}
+                      placeholder="llama3.2, qwen2.5, mistral..."
+                      className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {aiConfig.provider === 'openai-compat' && (
+                <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+                  <label className="block space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Endpoint URL (LM Studio / vLLM / API)</span>
+                    <input
+                      type="text"
+                      data-testid="custom-ai-url-input"
+                      value={aiConfig.customBaseUrl}
+                      onChange={(e) => setAiConfig((p) => ({ ...p, customBaseUrl: e.target.value }))}
+                      className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                  <label className="block space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Model Adı</span>
+                    <input
+                      type="text"
+                      value={aiConfig.customModel}
+                      onChange={(e) => setAiConfig((p) => ({ ...p, customModel: e.target.value }))}
+                      className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                  <label className="block space-y-0.5">
+                    <span className="text-[10px] text-slate-400">API Key (Yerelse Boş Bırak)</span>
+                    <input
+                      type="password"
+                      value={aiConfig.customApiKey}
+                      onChange={(e) => setAiConfig((p) => ({ ...p, customApiKey: e.target.value }))}
+                      placeholder="Opsiyonel"
+                      className="w-full rounded border border-white/15 bg-slate-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                </div>
+              )}
+
+              <label className="block space-y-1">
+                <span className="text-[11px] text-slate-400">Oyunun Kendi AI Karakter Kişiliği</span>
+                <textarea
+                  rows={3}
+                  data-testid="ai-system-prompt-input"
+                  value={aiConfig.systemPrompt}
+                  onChange={(e) => setAiConfig((p) => ({ ...p, systemPrompt: e.target.value }))}
+                  className="w-full rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100"
+                />
+              </label>
+
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  data-testid="test-ai-conn-btn"
+                  disabled={aiBusy}
+                  onClick={() => void handleTestAiConnection()}
+                  className="flex-1 rounded-lg border border-teal-400/40 bg-teal-500/15 py-1.5 font-semibold text-teal-200 hover:bg-teal-500/25 disabled:opacity-50"
+                >
+                  AI Test Et
+                </button>
+                <button
+                  type="button"
+                  data-testid="add-companion-btn"
+                  onClick={() => handleQuickAdd('companion')}
+                  className="flex-1 rounded-lg bg-sky-500/20 border border-sky-400/40 py-1.5 font-semibold text-sky-200 hover:bg-sky-500/30"
+                >
+                  + AI Yoldaş Ekle
+                </button>
+              </div>
+
+              {aiTestNote && (
+                <div data-testid="ai-test-result" className="rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-200">
+                  {aiTestNote}
+                </div>
+              )}
+
+              <div className="border-t border-white/10 pt-2.5 space-y-2">
+                <span className="block text-[11px] font-bold text-purple-300">
+                  Kendi Özel Bot AI Mantığını Ekle
+                </span>
+                <select
+                  data-testid="custom-bot-rule-select"
+                  value={aiConfig.customBotRule}
+                  onChange={(e) =>
+                    setAiConfig((p) => ({
+                      ...p,
+                      customBotRule: e.target.value as GameAiConfig['customBotRule'],
+                    }))
+                  }
+                  className="w-full rounded-lg border border-purple-400/30 bg-slate-900 px-2.5 py-1.5 text-xs"
+                >
+                  <option value="none">Varsayılan Bot AI (Devriye/Takip/Taret)</option>
+                  <option value="flee-player">Korkak Botlar (Oyuncudan Kaçar)</option>
+                  <option value="orbit-coins">Yörünge Devriyesi (Dairesel Hareket)</option>
+                  <option value="custom-js">Özel JS Yapay Zeka Kodu Yaz</option>
+                </select>
+
+                {aiConfig.customBotRule === 'custom-js' && (
+                  <textarea
+                    rows={3}
+                    data-testid="custom-bot-js-input"
+                    value={aiConfig.customBotJs}
+                    onChange={(e) => setAiConfig((p) => ({ ...p, customBotJs: e.target.value }))}
+                    className="w-full rounded-lg border border-purple-400/30 bg-slate-950 p-2 font-mono text-[11px] text-emerald-300"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {rightTab === 'rules' && (
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 text-xs">
               {(
                 [
-                  [
-                    'doubleJump',
-                    'Havada Space → Çift Zıplama (2x)',
-                    'Oyuncu havadayken bir kez daha zıplar + partikül saçar.',
-                  ],
-                  [
-                    'dashEnabled',
-                    'Shift Basılırsa → Hızlı Atılım (Dash)',
-                    'Kısa süreliğine 2.4x hız patlaması + ses efekti.',
-                  ],
-                  [
-                    'shooterEnabled',
-                    'F / ATEŞ → Enerji Topu Fırlat',
-                    'Takipçi ve Taret botları vurarak +150 skorla yok eder.',
-                  ],
-                  [
-                    'requireAllCoins',
-                    'Kilitli Portal Kuralı',
-                    'Tüm altınlar toplanmadan Bitiş Portalı zafer vermez.',
-                  ],
+                  ['doubleJump', 'Çift Zıplama (2x)', 'Havadayken Space ile ikinci kez zıplar.'],
+                  ['dashEnabled', 'Shift Hızlı Atılım (Dash)', 'Kısa süreli 2.4x hız patlaması sağlar.'],
+                  ['shooterEnabled', 'F / Enerji Silahı', 'Düşman botları vurarak +150 skor kazandırır.'],
+                  ['requireAllCoins', 'Kilitli Bitiş Portalı', 'Tüm altınlar toplanmadan zafer açılmaz.'],
                 ] as const
               ).map(([key, title, desc]) => (
                 <label
@@ -2226,7 +2332,7 @@ export const GameEngineEditor: React.FC = () => {
 
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-100">Dünya Yerçekimi</span>
+                  <span className="font-semibold text-slate-100">Yerçekimi</span>
                   <span className="font-mono text-sky-300">{rules.gravity} m/s²</span>
                 </div>
                 <input
@@ -2238,17 +2344,6 @@ export const GameEngineEditor: React.FC = () => {
                   onChange={(e) => setRules((prev) => ({ ...prev, gravity: Number(e.target.value) }))}
                   className="w-full accent-sky-400"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400">
-                  <button type="button" onClick={() => setRules((p) => ({ ...p, gravity: 12 }))} className="hover:text-sky-300">
-                    Ay (12)
-                  </button>
-                  <button type="button" onClick={() => setRules((p) => ({ ...p, gravity: 22 }))} className="hover:text-sky-300">
-                    Normal (22)
-                  </button>
-                  <button type="button" onClick={() => setRules((p) => ({ ...p, gravity: 32 }))} className="hover:text-sky-300">
-                    Ağır (32)
-                  </button>
-                </div>
               </div>
             </div>
           )}

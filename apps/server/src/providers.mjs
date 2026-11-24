@@ -715,4 +715,149 @@ export class ProviderHub {
       note: 'Çevrimdışı stüdyo kompozit önizlemesi üretildi.',
     };
   }
+
+  async runGameAi(req = {}) {
+    const task = String(req.task || 'npc-chat');
+    const provider = String(req.provider || 'ollama');
+    const prompt = String(req.prompt || '').trim();
+    const systemPrompt = String(
+      req.systemPrompt ||
+        'Sen bir 3D video oyunu içinde yaşayan akıllı, yardımsever ve kısa konuşan bir AI karaktersin. Türkçe, 1-2 cümle cevap ver.',
+    ).trim();
+
+    const ollamaUrl = String(req.ollamaUrl || this.config.ollamaUrl || 'http://127.0.0.1:11434').replace(/\/$/, '');
+    const ollamaModel = String(req.ollamaModel || this.config.ollamaModel || 'llama3.2').trim();
+    const customBaseUrl = String(req.customBaseUrl || 'http://127.0.0.1:1234/v1').replace(/\/$/, '');
+    const customModel = String(req.customModel || 'local-model').trim();
+    const customApiKey = String(req.customApiKey || '').trim();
+
+    const fullSystem =
+      task === 'level'
+        ? 'Sen bir 3D oyun seviye tasarımcısısın. Sadece geçerli bir JSON objesi döndür, başka açıklama yazma: {"title":"...","skyTheme":"cyber|sunset|neon|sky","coinsCount":4,"botsCount":2,"botBehavior":"patrol|chase|turret|companion","hazardCount":1,"hasBounce":true,"hasMoving":true,"isTower":false,"npcPersona":"...","npcGreeting":"..."}'
+        : systemPrompt;
+
+    let rawText = null;
+    let usedProvider = provider;
+    let modelUsed = provider === 'ollama' ? ollamaModel : provider === 'openai-compat' ? customModel : 'alpemox-builtin-ai';
+    let fallbackReason = null;
+
+    if (provider === 'ollama') {
+      try {
+        const res = await fetch(`${ollamaUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: ollamaModel,
+            stream: false,
+            messages: [
+              { role: 'system', content: fullSystem },
+              { role: 'user', content: prompt || 'Merhaba!' },
+            ],
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+        const data = await res.json();
+        rawText = String(data?.message?.content || data?.response || '').trim();
+      } catch (err) {
+        fallbackReason = `Yerel Ollama erişilemedi (${ollamaUrl} · ${err.message}). Yerleşik AI yanıtı kullanıldı.`;
+      }
+    } else if (provider === 'openai-compat') {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (customApiKey) headers.Authorization = `Bearer ${customApiKey}`;
+        const endpoint = customBaseUrl.endsWith('/chat/completions')
+          ? customBaseUrl
+          : `${customBaseUrl}/chat/completions`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: customModel,
+            messages: [
+              { role: 'system', content: fullSystem },
+              { role: 'user', content: prompt || 'Merhaba!' },
+            ],
+            temperature: 0.7,
+            max_tokens: 260,
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!res.ok) throw new Error(`Özel AI HTTP ${res.status}`);
+        const data = await res.json();
+        rawText = String(data?.choices?.[0]?.message?.content || '').trim();
+      } catch (err) {
+        fallbackReason = `Özel AI ucu erişilemedi (${customBaseUrl} · ${err.message}). Yerleşik AI yanıtı kullanıldı.`;
+      }
+    }
+
+    if (rawText) {
+      if (task === 'level') {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        let spec = null;
+        if (jsonMatch) {
+          try {
+            spec = JSON.parse(jsonMatch[0]);
+          } catch {
+            spec = null;
+          }
+        }
+        return {
+          ok: true,
+          task,
+          provider: usedProvider,
+          model: modelUsed,
+          usedFallback: false,
+          reply: rawText,
+          levelSpec: spec,
+        };
+      }
+      return {
+        ok: true,
+        task,
+        provider: usedProvider,
+        model: modelUsed,
+        usedFallback: false,
+        reply: rawText,
+      };
+    }
+
+    // Built-in offline smart fallback
+    usedProvider = 'builtin';
+    const state = req.gameState || {};
+    if (task === 'level') {
+      return {
+        ok: true,
+        task,
+        provider: 'builtin',
+        model: 'alpemox-builtin-ai',
+        usedFallback: Boolean(fallbackReason),
+        fallbackReason,
+        levelSpec: null,
+        reply: 'Yerleşik Alpemox AI seviye düzenini kurdu.',
+      };
+    }
+
+    const pLower = prompt.toLowerCase();
+    let offlineReply = '';
+    if (pLower.includes('altın') || pLower.includes('coin') || pLower.includes('nerede')) {
+      offlineReply = `Şu ana kadar ${state.coins ?? 0}/${state.totalCoins ?? 0} altın topladın. Yüksek platformlarda parlayan halkaları ve mıknatıs kristalini takip et!`;
+    } else if (pLower.includes('düşman') || pLower.includes('bot') || pLower.includes('taret') || pLower.includes('yardım')) {
+      offlineReply = `F tuşuyla enerji topu atarak botları +150 puana indirebilir, Shift ile hızla kaçabilirsin. Canın: ${state.hp ?? 3}.`;
+    } else if (pLower.includes('kim') || pLower.includes('merhaba') || pLower.includes('selam')) {
+      offlineReply = `Selam kahraman! Ben senin oyuna eklediğin AI rehberinim. Skorun ${state.score ?? 0}; hedef yeşil Zafer Portalı!`;
+    } else {
+      offlineReply = `(${systemPrompt.slice(0, 48)}...) Hazırım! Altın: ${state.coins ?? 0}/${state.totalCoins ?? 0}, Skor: ${state.score ?? 0}. Shift + Space kombosuyla zafere ulaş!`;
+    }
+
+    return {
+      ok: true,
+      task,
+      provider: usedProvider,
+      model: 'alpemox-builtin-ai',
+      usedFallback: Boolean(fallbackReason),
+      fallbackReason,
+      reply: offlineReply,
+    };
+  }
 }

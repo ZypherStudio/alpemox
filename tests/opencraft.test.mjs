@@ -222,6 +222,22 @@ test('server API, WebSocket sync, pipeline run, and MCP stdio integration', asyn
     const mannequin = finalProj.objects3d.find((o) => o.id === 'mannequin-1');
     assert.equal(mannequin.pose.preset, 'action');
     assert.ok(finalProj.objects3d.some((o) => o.name === 'MCP Drone'));
+
+    // 7. Game AI endpoint (built-in & custom/ollama fallback)
+    const gameAiRes = await fetch(`${baseUrl}/api/game/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: 'npc-chat',
+        provider: 'builtin',
+        prompt: 'Altınlar nerede?',
+        gameState: { score: 100, coins: 1, totalCoins: 3, hp: 3 },
+      }),
+    });
+    assert.equal(gameAiRes.status, 200);
+    const gameAiData = await gameAiRes.json();
+    assert.equal(gameAiData.ok, true);
+    assert.ok(gameAiData.reply.includes('1/3'));
   } finally {
     server.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

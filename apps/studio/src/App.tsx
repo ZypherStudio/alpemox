@@ -250,7 +250,7 @@ export default function App() {
           {viewportMode !== 'film' && viewportMode !== 'moodboard' && viewportMode !== 'game' && <StoryboardDock />}
         </div>
 
-        {rightSidebarOpen && <CraftInspector />}
+        {rightSidebarOpen && viewportMode !== 'game' && <CraftInspector />}
       </div>
 
       <ProviderSettingsModal />

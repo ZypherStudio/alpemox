@@ -309,9 +309,28 @@ export function makeTemplate(kind: 'platformer' | 'arena' | 'tower' | 'space'): 
   ];
 }
 
-export function generateLevelFromPrompt(prompt: string): {
+export interface LlmLevelSpec {
+  title?: string;
+  skyTheme?: SkyThemeId;
+  coinsCount?: number;
+  botsCount?: number;
+  botBehavior?: 'patrol' | 'chase' | 'turret' | 'companion';
+  hazardCount?: number;
+  hasBounce?: boolean;
+  hasMoving?: boolean;
+  isTower?: boolean;
+  npcPersona?: string;
+  npcGreeting?: string;
+}
+
+export function generateLevelFromPrompt(
+  prompt: string,
+  llmSpec?: LlmLevelSpec | null,
+): {
   objects: StageObject3D[];
   skyTheme?: SkyThemeId;
+  npcPersona?: string;
+  npcGreeting?: string;
   summary: string;
 } {
   const lower = prompt.toLowerCase();
@@ -319,19 +338,44 @@ export function generateLevelFromPrompt(prompt: string): {
   const botMatch = lower.match(/(\d+)\s*(bot|npc|düşman|taret)/i);
   const hazardMatch = lower.match(/(\d+)\s*(engel|tuzak|lazer|lav)/i);
 
-  const coinsCount = Math.min(10, Math.max(2, Number(coinMatch?.[1] ?? 4)));
-  const botsCount = Math.min(6, Math.max(1, Number(botMatch?.[1] ?? (lower.includes('bot') || lower.includes('npc') || lower.includes('taret') ? 2 : 1))));
-  const hazardCount = Math.min(6, Math.max(1, Number(hazardMatch?.[1] ?? (lower.includes('lav') || lower.includes('tuzak') || lower.includes('engel') ? 2 : 1))));
-  const hasBounce = /trambolin|zıpla|bounce|yay/.test(lower) || !lower.trim();
-  const hasMoving = /hareketli|asansör|köprü|moving/.test(lower) || !lower.trim();
-  const isTower = /kule|dikey|tower|yukarı/.test(lower);
-  const wantsTurret = /taret|ateş|uzay|savaş/.test(lower);
-  const wantsChase = /takip|kovala|zombi|bot/.test(lower);
+  const coinsCount = Math.min(
+    10,
+    Math.max(2, Number(llmSpec?.coinsCount ?? coinMatch?.[1] ?? 4)),
+  );
+  const botsCount = Math.min(
+    6,
+    Math.max(
+      1,
+      Number(
+        llmSpec?.botsCount ??
+          botMatch?.[1] ??
+          (lower.includes('bot') || lower.includes('npc') || lower.includes('taret') ? 2 : 1),
+      ),
+    ),
+  );
+  const hazardCount = Math.min(
+    6,
+    Math.max(
+      1,
+      Number(
+        llmSpec?.hazardCount ??
+          hazardMatch?.[1] ??
+          (lower.includes('lav') || lower.includes('tuzak') || lower.includes('engel') ? 2 : 1),
+      ),
+    ),
+  );
+  const hasBounce = llmSpec?.hasBounce ?? (/trambolin|zıpla|bounce|yay/.test(lower) || !lower.trim());
+  const hasMoving = llmSpec?.hasMoving ?? (/hareketli|asansör|köprü|moving/.test(lower) || !lower.trim());
+  const isTower = llmSpec?.isTower ?? /kule|dikey|tower|yukarı/.test(lower);
+  const wantsTurret = llmSpec?.botBehavior === 'turret' || /taret|ateş|uzay|savaş/.test(lower);
+  const wantsChase = llmSpec?.botBehavior === 'chase' || /takip|kovala|zombi|bot/.test(lower);
 
-  let skyTheme: SkyThemeId | undefined;
-  if (/neon|siber|uzay/.test(lower)) skyTheme = 'neon';
-  else if (/gün\s*batım|sunset|lav/.test(lower)) skyTheme = 'sunset';
-  else if (/gökyüzü|bulut|mavi|sky/.test(lower)) skyTheme = 'sky';
+  let skyTheme: SkyThemeId | undefined = llmSpec?.skyTheme;
+  if (!skyTheme) {
+    if (/neon|siber|uzay/.test(lower)) skyTheme = 'neon';
+    else if (/gün\s*batım|sunset|lav/.test(lower)) skyTheme = 'sunset';
+    else if (/gökyüzü|bulut|mavi|sky/.test(lower)) skyTheme = 'sky';
+  }
 
   const objects: StageObject3D[] = [
     makeGameObject('AI Kahraman', 'mannequin', 'player', { x: 0, y: 1.6, z: 7 }, { x: 1, y: 1, z: 1 }, '#38bdf8', {
@@ -340,6 +384,12 @@ export function generateLevelFromPrompt(prompt: string): {
       jumpForce: 10.8,
     }),
     makeGameObject('Başlangıç Alanı', 'box', 'solid', { x: 0, y: -0.5, z: 6.5 }, { x: 7.5, y: 1, z: 6.5 }, '#1e293b'),
+    makeGameObject('Akıllı AI Yoldaş', 'sphere', 'npc', { x: -2.1, y: 1.1, z: 5.5 }, { x: 0.85, y: 0.85, z: 0.85 }, '#2dd4bf', {
+      moveSpeed: 3.2,
+      patrolRange: 2.5,
+      npcBehavior: 'companion',
+      aiPersona: llmSpec?.npcPersona || 'Bilge ve dost canlısı 3D oyun rehberi',
+    }),
     makeGameObject('AI Power-Up (Mıknatıs/Kalkan)', 'sphere', 'powerup', { x: 1.8, y: 1.1, z: 5.2 }, { x: 0.85, y: 0.85, z: 0.85 }, '#6366f1', {
       powerupType: 'magnet',
     }),
@@ -451,6 +501,8 @@ export function generateLevelFromPrompt(prompt: string): {
   return {
     objects,
     skyTheme,
-    summary: `Prompt üretildi: ${coinsCount} altın, ${botsCount} AI bot, ${hazardCount} engel, Power-Up${hasBounce ? ', trambolin' : ''}${hasMoving ? ', hareketli platform' : ''}.`,
+    npcPersona: llmSpec?.npcPersona,
+    npcGreeting: llmSpec?.npcGreeting,
+    summary: `${llmSpec?.title ? `${llmSpec.title} · ` : ''}${coinsCount} altın, ${botsCount} AI bot + Yoldaş, ${hazardCount} engel.`,
   };
 }

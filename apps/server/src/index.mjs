@@ -468,6 +468,15 @@ fi
     }
   });
 
+  app.post('/api/game/ai', async (req, res) => {
+    try {
+      const result = await providers.runGameAi(req.body || {});
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
   // Serve built frontend if available
   const studioDist = path.join(repoRoot, 'apps/studio/dist');
   if (fs.existsSync(studioDist)) {

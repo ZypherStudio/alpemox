@@ -133,8 +133,9 @@ export interface StageObject3D {
   patrolRange?: number;
   bounceForce?: number;
   patrolAxis?: 'x' | 'y' | 'z';
-  npcBehavior?: 'patrol' | 'chase' | 'turret';
+  npcBehavior?: 'patrol' | 'chase' | 'turret' | 'companion';
   powerupType?: 'shield' | 'magnet' | 'speed';
+  aiPersona?: string;
 }
 
 export interface StageLightingState {

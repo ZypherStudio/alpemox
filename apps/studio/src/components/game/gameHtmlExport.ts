@@ -202,7 +202,11 @@ function loop(now) {
   for (const n of npcs) {
     if (!n.alive) continue;
     const d = n.mesh.position.distanceTo(playerMesh.position);
-    if (n.behavior === 'chase' && d < 14 && !over) {
+    if (n.behavior === 'companion' && !over) {
+      const target = new THREE.Vector3(playerMesh.position.x - 1.8, playerMesh.position.y + 0.8 + Math.sin(elapsed * 3) * 0.25, playerMesh.position.z + 1.2);
+      n.mesh.position.lerp(target, 0.04);
+      n.mesh.rotation.y += dt * 1.4;
+    } else if (n.behavior === 'chase' && d < 14 && !over) {
       const toP = new THREE.Vector3().subVectors(playerMesh.position, n.mesh.position); toP.y = 0;
       if (toP.length() > 0.3) { toP.normalize(); n.mesh.position.addScaledVector(toP, (n.speed * 0.85) * dt); }
     } else if (n.behavior === 'turret') {
@@ -226,7 +230,7 @@ function loop(now) {
     const s = shots[i]; s.life -= dt; s.mesh.position.addScaledVector(s.dir, 22 * dt);
     let hit = false;
     for (const n of npcs) {
-      if (n.alive && s.mesh.position.distanceTo(n.mesh.position) < 1.15) {
+      if (n.alive && n.behavior !== 'companion' && s.mesh.position.distanceTo(n.mesh.position) < 1.15) {
         n.alive = false; n.mesh.visible = false; hit = true; score += 150; spawnBurst(n.mesh.position, '#a855f7', 16); showToast('BOT YOK EDİLDİ +150!');
       }
     }
@@ -310,7 +314,7 @@ function loop(now) {
     if (invuln > 0) invuln -= dt;
     if (shieldTimer <= 0) {
       for (const h of hazards) if (invuln <= 0 && playerMesh.position.distanceTo(h.mesh.position) < h.radius + 0.45) { hp--; invuln = 1.1; vy = 6; spawnBurst(playerMesh.position, '#f43f5e', 10); }
-      for (const n of npcs) if (n.alive && invuln <= 0 && playerMesh.position.distanceTo(n.mesh.position) < 1.05) { hp--; invuln = 1.1; vy = 6; spawnBurst(playerMesh.position, '#f43f5e', 10); }
+      for (const n of npcs) if (n.alive && n.behavior !== 'companion' && invuln <= 0 && playerMesh.position.distanceTo(n.mesh.position) < 1.05) { hp--; invuln = 1.1; vy = 6; spawnBurst(playerMesh.position, '#f43f5e', 10); }
     }
     for (const g of goals) {
       if (playerMesh.position.distanceTo(g.mesh.position) < 1.65) {
