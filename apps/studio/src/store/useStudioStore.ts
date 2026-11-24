@@ -673,21 +673,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   add3DObject: (kind, extra = {}) => {
-    const id = `obj3d-${Date.now().toString(36)}`;
+    const id = `obj3d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
     const obj: StageObject3D = {
+      ...extra,
       id,
       name: extra.name || `3D ${kind.toUpperCase()}`,
       kind,
-      visible: true,
+      visible: extra.visible ?? true,
       position: extra.position || { x: (Math.random() - 0.5) * 2.2, y: kind === 'mannequin' ? 0 : 0.7, z: 0 },
       rotation: extra.rotation || { x: 0, y: 0, z: 0 },
       scale: extra.scale || { x: 1, y: 1, z: 1 },
       color: extra.color || '#38bdf8',
-      pose: kind === 'mannequin' ? clonePose('neutral') : undefined,
-      textureDataUrl: extra.textureDataUrl,
-      glbDataUrl: extra.glbDataUrl,
-      svgString: extra.svgString,
-      extrudeDepth: extra.extrudeDepth,
+      pose: kind === 'mannequin' ? extra.pose || clonePose('neutral') : extra.pose,
     };
     const next = { ...get().project, objects3d: [...get().project.objects3d, obj] };
     set({ project: next, selectedObject3DId: id });

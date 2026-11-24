@@ -7,6 +7,7 @@ export type GameRole =
   | 'collectible'
   | 'hazard'
   | 'checkpoint'
+  | 'powerup'
   | 'goal'
   | 'npc'
   | 'decor';
@@ -132,6 +133,8 @@ export interface StageObject3D {
   patrolRange?: number;
   bounceForce?: number;
   patrolAxis?: 'x' | 'y' | 'z';
+  npcBehavior?: 'patrol' | 'chase' | 'turret';
+  powerupType?: 'shield' | 'magnet' | 'speed';
 }
 
 export interface StageLightingState {
@@ -602,13 +605,13 @@ export const ALPEMOX_SUITE_APPS: SuiteAppSpec[] = [
     tagline: '★ Yıldız Modül · 3D Oyun Motoru, AI Seviye & Web Export',
     category: 'Game Engine',
     mode: 'game',
-    badge: '★ Star Engine v2 · Gizmo + AI + Rules',
+    badge: '★ Star Engine v3 · Pro Indie Engine',
     description:
-      'Gizmo editör (Taşı/Döndür/Ölçekle), Prompt → 3D Oyun üretici, hareketli platformlar, trambolin, checkpoint, 2x zıplama, Shift Dash, enerji ateşi, TPS/Top-Down/FPS kamera, 3D partiküller ve tek dosya .HTML oyun ihracı.',
+      'Animasyonlu 3D karakter, Takipçi/Taret düşman AI, Kalkan/Mıknatıs Power-Up, canlı 2D Radar Mini-Map, Grid Snap Gizmo, Prompt → 3D Seviye, kodsuz Olay Kuralları, Chiptune synth müzik ve tek dosya .HTML oyun ihracı.',
     highlights: [
-      'Transform Gizmo + Prompt → 3D Seviye Üretici',
-      'Hareketli Platform, Trambolin, Checkpoint, FPS/TPS Kamera & Enerji Ateşi',
-      'Görsel Olay Kuralları, Partikül FX & Tek Dosya .HTML Export',
+      'Animasyonlu Karakter + Takipçi & Taret Düşman AI + Power-Up',
+      'Canlı Radar Mini-Map, Grid Snap Gizmo & Prompt → 3D Oyun',
+      'Chiptune Synth Müzik + Görsel Kurallar + Tek Dosya .HTML Export',
     ],
     platforms: ['macOS', 'Windows', 'Linux', 'Web'],
   },

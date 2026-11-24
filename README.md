@@ -65,7 +65,7 @@ Inspired architecturally by [ArtCraft](https://github.com/storytold/artcraft) (M
 
 | Module | What It Does |
 | :--- | :--- |
-| **Alpemox Game ★** | **Live 3D Mini Game Engine v2**: **Transform Gizmo** (`Translate/Rotate/Scale`), **Prompt → 3D Level Generator**, moving platforms, bounce pads, checkpoints, double jump, `Shift` dash, `F` energy blaster, `TPS / Top-Down / FPS` cameras, GDevelop-style visual event rules, 3D particles, WebAudio SFX, and **1-click standalone playable `.HTML` export**. |
+| **Alpemox Game ★** | **Live 3D Mini Game Engine v3**: **Articulated animated hero**, **Chase & Turret Enemy AI**, **Shield + Coin Magnet Power-Up**, **2D Radar Mini-Map**, **Grid-Snap Transform Gizmo**, **Prompt → 3D Level Generator**, moving platforms, bounce pads, checkpoints, double jump, `Shift` dash, `F` energy blaster, `TPS / Top-Down / FPS` cameras, GDevelop-style visual event rules, Chiptune synth music, `.alpemox-level.json` save/load, and **1-click standalone playable `.HTML` export**. |
 | **Alpemox Studio (Hybrid)** | Live **2D ↔ 3D bridge**: pose a 3D mannequin, capture RGB + Depth, paint/mask in 2D, craft with AI, and project back onto the 3D stage as a billboard. |
 | **Alpemox Photo** | Multi-layer canvas, drag-and-drop image import, live luminance histogram, `Teal & Orange / Kodak / Noir` LUT presets, temperature, vignette, blur, drop shadow, crop, merge visible layers, Sobel edge extraction, client-side background removal, and invert inpaint mask. |
 | **Alpemox Vector** | Smooth Cubic Bezier pen with draggable anchor points, shapes (`Rect`, `Ellipse`, `Star`, `Polygon`, `Line`, `Text`), corner radius, dashed strokes, CSS keyframe motion presets (`Pulse`, `Spin`, `Float`), SVG import/export, and 1-click **3D Extrude**. |

@@ -14,486 +14,51 @@ import {
   Camera,
   CheckCircle2,
   Coins,
+  Copy,
   Crosshair,
   Download,
   Flag,
+  Focus,
   Gamepad2,
   Heart,
   Layers,
+  Magnet,
   Maximize2,
   Move,
+  Music,
   Play,
   Plus,
+  Rocket,
   RotateCcw,
   RotateCw,
+  Shield,
   Sliders,
   Sparkles,
   Square,
   Sun,
   Trash2,
   Trophy,
+  Upload,
   User,
+  Volume2,
+  VolumeX,
   Wand2,
   Zap,
 } from 'lucide-react';
 import { useStudioStore } from '../store/useStudioStore';
-
-type CameraViewMode = 'tps' | 'topdown' | 'fps';
-type SkyThemeId = 'cyber' | 'sunset' | 'neon' | 'sky';
-type GizmoMode = 'translate' | 'rotate' | 'scale';
-
-interface GameRulesConfig {
-  doubleJump: boolean;
-  dashEnabled: boolean;
-  shooterEnabled: boolean;
-  requireAllCoins: boolean;
-  gravity: number;
-}
-
-const SKY_THEMES: Record<
-  SkyThemeId,
-  { label: string; bg: string; fog: string; ambient: string; dir: string; grid1: number; grid2: number }
-> = {
-  cyber: {
-    label: 'Siber Gece',
-    bg: '#090d16',
-    fog: '#090d16',
-    ambient: '#dbeafe',
-    dir: '#fff7ed',
-    grid1: 0x334155,
-    grid2: 0x1e293b,
-  },
-  sunset: {
-    label: 'Gün Batımı',
-    bg: '#2a1225',
-    fog: '#3b182e',
-    ambient: '#fed7aa',
-    dir: '#fb923c',
-    grid1: 0x9d174d,
-    grid2: 0x500724,
-  },
-  neon: {
-    label: 'Neon Arena',
-    bg: '#050816',
-    fog: '#0a0f2c',
-    ambient: '#a5f3fc',
-    dir: '#e879f9',
-    grid1: 0x0ea5e9,
-    grid2: 0x1e1b4b,
-  },
-  sky: {
-    label: 'Açık Gökyüzü',
-    bg: '#0c4a6e',
-    fog: '#0369a1',
-    ambient: '#f0f9ff',
-    dir: '#fef08a',
-    grid1: 0x38bdf8,
-    grid2: 0x075985,
-  },
-};
-
-const ROLE_META: Record<
-  GameRole,
-  { label: string; badge: string; ringColor: string; defaultColor: string }
-> = {
-  player: {
-    label: 'Oyuncu',
-    badge: 'bg-sky-500/20 text-sky-300 border-sky-400/40',
-    ringColor: '#38bdf8',
-    defaultColor: '#38bdf8',
-  },
-  solid: {
-    label: 'Sabit Platform',
-    badge: 'bg-slate-500/20 text-slate-200 border-slate-400/30',
-    ringColor: '#94a3b8',
-    defaultColor: '#334155',
-  },
-  moving: {
-    label: 'Hareketli Platform',
-    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40',
-    ringColor: '#06b6d4',
-    defaultColor: '#0e7490',
-  },
-  bounce: {
-    label: 'Trambolin / Zıplatıcı',
-    badge: 'bg-lime-500/20 text-lime-300 border-lime-400/40',
-    ringColor: '#84cc16',
-    defaultColor: '#65a30d',
-  },
-  collectible: {
-    label: 'Altın / Ödül',
-    badge: 'bg-amber-500/20 text-amber-300 border-amber-400/40',
-    ringColor: '#fbbf24',
-    defaultColor: '#f59e0b',
-  },
-  hazard: {
-    label: 'Tehlike / Tuzak',
-    badge: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
-    ringColor: '#f43f5e',
-    defaultColor: '#ef4444',
-  },
-  checkpoint: {
-    label: 'Checkpoint',
-    badge: 'bg-teal-500/20 text-teal-300 border-teal-400/40',
-    ringColor: '#2dd4bf',
-    defaultColor: '#0d9488',
-  },
-  goal: {
-    label: 'Bitiş Portalı',
-    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
-    ringColor: '#10b981',
-    defaultColor: '#10b981',
-  },
-  npc: {
-    label: 'Devriye NPC',
-    badge: 'bg-purple-500/20 text-purple-300 border-purple-400/40',
-    ringColor: '#a855f7',
-    defaultColor: '#a855f7',
-  },
-  decor: {
-    label: 'Dekor',
-    badge: 'bg-zinc-500/20 text-zinc-300 border-zinc-400/30',
-    ringColor: '#71717a',
-    defaultColor: '#64748b',
-  },
-};
-
-function inferRole(obj: StageObject3D): GameRole {
-  if (obj.gameRole) return obj.gameRole;
-  if (obj.kind === 'mannequin') return 'player';
-  if (obj.kind === 'torus') return 'collectible';
-  return 'solid';
-}
-
-function playSynthTone(type: 'jump' | 'coin' | 'hit' | 'win' | 'bounce' | 'shoot' | 'dash' | 'checkpoint') {
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-
-    const triggerNote = (
-      freqStart: number,
-      freqEnd: number,
-      duration: number,
-      delay = 0,
-      wave: OscillatorType = 'sine',
-      gainPeak = 0.14,
-    ) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = wave;
-      osc.frequency.setValueAtTime(freqStart, now + delay);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(40, freqEnd), now + delay + duration);
-      gain.gain.setValueAtTime(gainPeak, now + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + duration + 0.02);
-    };
-
-    switch (type) {
-      case 'jump':
-        triggerNote(240, 520, 0.14, 0, 'triangle', 0.12);
-        break;
-      case 'bounce':
-        triggerNote(220, 960, 0.24, 0, 'sine', 0.15);
-        break;
-      case 'dash':
-        triggerNote(520, 180, 0.12, 0, 'sawtooth', 0.09);
-        break;
-      case 'shoot':
-        triggerNote(880, 220, 0.11, 0, 'square', 0.08);
-        break;
-      case 'coin':
-        triggerNote(880, 1320, 0.1, 0, 'sine', 0.15);
-        triggerNote(1320, 1760, 0.12, 0.07, 'sine', 0.12);
-        break;
-      case 'checkpoint':
-        triggerNote(587.33, 880, 0.16, 0, 'triangle', 0.13);
-        triggerNote(880, 1174.66, 0.18, 0.1, 'triangle', 0.13);
-        break;
-      case 'hit':
-        triggerNote(180, 65, 0.22, 0, 'sawtooth', 0.15);
-        break;
-      case 'win':
-        triggerNote(523.25, 523.25, 0.14, 0, 'triangle', 0.15);
-        triggerNote(659.25, 659.25, 0.14, 0.11, 'triangle', 0.15);
-        triggerNote(783.99, 1046.5, 0.28, 0.22, 'triangle', 0.16);
-        break;
-    }
-
-    window.setTimeout(() => {
-      void ctx.close();
-    }, 900);
-  } catch {
-    // Ignore autoplay/WebAudio restrictions
-  }
-}
-
-function makeObj(
-  name: string,
-  objKind: StageObject3D['kind'],
-  gameRole: GameRole,
-  position: { x: number; y: number; z: number },
-  scale: { x: number; y: number; z: number },
-  color: string,
-  extra: Partial<StageObject3D> = {},
-): StageObject3D {
-  return {
-    id: `gm_${Math.random().toString(36).slice(2, 8)}`,
-    name,
-    kind: objKind,
-    visible: true,
-    position,
-    rotation: { x: 0, y: 0, z: 0 },
-    scale,
-    color,
-    roughness: 0.42,
-    metalness: gameRole === 'collectible' || gameRole === 'goal' ? 0.5 : 0.14,
-    emissiveIntensity:
-      gameRole === 'goal' || gameRole === 'hazard' || gameRole === 'bounce' || gameRole === 'checkpoint'
-        ? 0.35
-        : 0,
-    gameRole,
-    ...extra,
-  };
-}
-
-function makeTemplate(kind: 'platformer' | 'arena' | 'tower'): StageObject3D[] {
-  if (kind === 'platformer') {
-    return [
-      makeObj('Kahraman Oyuncu', 'mannequin', 'player', { x: 0, y: 1.6, z: 7 }, { x: 1, y: 1, z: 1 }, '#38bdf8', {
-        pose: clonePose(),
-        moveSpeed: 7.8,
-        jumpForce: 10.6,
-      }),
-      makeObj('Başlangıç Zemini', 'box', 'solid', { x: 0, y: -0.5, z: 6.5 }, { x: 7, y: 1, z: 7 }, '#1e293b'),
-      makeObj('Basamak 1', 'box', 'solid', { x: 0, y: 0.6, z: 1.2 }, { x: 4.5, y: 0.7, z: 3.2 }, '#334155'),
-      makeObj('Trambolin Pad', 'cylinder', 'bounce', { x: 0, y: 1.1, z: 0.2 }, { x: 1.6, y: 0.35, z: 1.6 }, '#84cc16', {
-        bounceForce: 17.5,
-      }),
-      makeObj('Hareketli Köprü', 'box', 'moving', { x: 0, y: 2.3, z: -4.2 }, { x: 4.2, y: 0.65, z: 3 }, '#06b6d4', {
-        moveSpeed: 2.2,
-        patrolRange: 3.4,
-        patrolAxis: 'x',
-      }),
-      makeObj('Orta Ada & Checkpoint', 'box', 'solid', { x: 0, y: 2.5, z: -9.5 }, { x: 6, y: 0.8, z: 4.8 }, '#334155'),
-      makeObj('Ara Kayıt Bayrağı', 'cylinder', 'checkpoint', { x: -1.8, y: 3.8, z: -9.5 }, { x: 0.9, y: 1.8, z: 0.9 }, '#2dd4bf'),
-      makeObj('Bitiş Kalesi', 'box', 'solid', { x: 0, y: 3.4, z: -15.5 }, { x: 7, y: 0.9, z: 6 }, '#1e293b'),
-      makeObj('Altın #1', 'torus', 'collectible', { x: 0, y: 1.8, z: 1.5 }, { x: 0.7, y: 0.7, z: 0.7 }, '#fbbf24'),
-      makeObj('Altın #2 (Hava)', 'torus', 'collectible', { x: 0, y: 4.8, z: -2.2 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-      makeObj('Altın #3', 'torus', 'collectible', { x: 1.4, y: 4.6, z: -14.2 }, { x: 0.7, y: 0.7, z: 0.7 }, '#fbbf24'),
-      makeObj('Lazer Engeli', 'box', 'hazard', { x: -1.4, y: 4.2, z: -14.5 }, { x: 1.4, y: 0.8, z: 1.2 }, '#f43f5e'),
-      makeObj('Devriye Bot', 'cone', 'npc', { x: 0, y: 3.6, z: -9.5 }, { x: 0.9, y: 1.3, z: 0.9 }, '#a855f7', {
-        moveSpeed: 2.6,
-        patrolRange: 2.3,
-      }),
-      makeObj('Zafer Portalı', 'cylinder', 'goal', { x: 0, y: 5, z: -16.8 }, { x: 1.6, y: 2.3, z: 1.6 }, '#10b981'),
-    ];
-  }
-
-  if (kind === 'tower') {
-    return [
-      makeObj('Kule Tırmanıcısı', 'mannequin', 'player', { x: 0, y: 1.4, z: 5.5 }, { x: 1, y: 1, z: 1 }, '#38bdf8', {
-        pose: clonePose(),
-        moveSpeed: 8.0,
-        jumpForce: 11.2,
-      }),
-      makeObj('Kule Tabanı', 'box', 'solid', { x: 0, y: -0.5, z: 0 }, { x: 14, y: 1, z: 14 }, '#1e293b'),
-      makeObj('Kat 1 Trambolin', 'cylinder', 'bounce', { x: 3.8, y: 0.25, z: 2.8 }, { x: 1.8, y: 0.4, z: 1.8 }, '#84cc16', {
-        bounceForce: 19,
-      }),
-      makeObj('Kat 2 Balkonu', 'box', 'solid', { x: 3.8, y: 4.2, z: -2.2 }, { x: 4.6, y: 0.7, z: 4.6 }, '#334155'),
-      makeObj('Kat 2 Checkpoint', 'cylinder', 'checkpoint', { x: 4.6, y: 5.4, z: -2.2 }, { x: 0.85, y: 1.7, z: 0.85 }, '#2dd4bf'),
-      makeObj('Asansör Platform', 'box', 'moving', { x: -1.5, y: 5.8, z: -2.2 }, { x: 3.8, y: 0.6, z: 3.8 }, '#06b6d4', {
-        moveSpeed: 2.0,
-        patrolRange: 2.8,
-        patrolAxis: 'y',
-      }),
-      makeObj('Zirve Terası', 'box', 'solid', { x: -5, y: 8.6, z: -2.2 }, { x: 5.5, y: 0.8, z: 5.5 }, '#475569'),
-      makeObj('Kule Altını 1', 'torus', 'collectible', { x: 3.8, y: 5.4, z: -1.6 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-      makeObj('Kule Altını 2', 'torus', 'collectible', { x: -1.5, y: 8.4, z: -2.2 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-      makeObj('Zirve Nöbetçisi', 'cone', 'npc', { x: -5, y: 9.7, z: -1.4 }, { x: 0.95, y: 1.4, z: 0.95 }, '#a855f7', {
-        moveSpeed: 2.8,
-        patrolRange: 2.0,
-      }),
-      makeObj('Zirve Portalı', 'cylinder', 'goal', { x: -5, y: 10.2, z: -3.8 }, { x: 1.6, y: 2.3, z: 1.6 }, '#10b981'),
-    ];
-  }
-
-  // Arena / Shooter
-  return [
-    makeObj('Arena Savaşçısı', 'mannequin', 'player', { x: 0, y: 1.4, z: 7.5 }, { x: 1, y: 1, z: 1 }, '#38bdf8', {
-      pose: clonePose(),
-      moveSpeed: 8.8,
-      jumpForce: 10.0,
-    }),
-    makeObj('Savaş Arenası', 'box', 'solid', { x: 0, y: -0.5, z: 0 }, { x: 22, y: 1, z: 22 }, '#1e293b'),
-    makeObj('Merkez Platform', 'box', 'solid', { x: 0, y: 1.4, z: 0 }, { x: 4, y: 2.8, z: 4 }, '#475569'),
-    makeObj('Arena Trambolin', 'cylinder', 'bounce', { x: -5.5, y: 0.25, z: 4.5 }, { x: 1.7, y: 0.35, z: 1.7 }, '#84cc16', {
-      bounceForce: 18,
-    }),
-    makeObj('Altın Kuzey', 'torus', 'collectible', { x: 0, y: 1.1, z: -7 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-    makeObj('Altın Doğu', 'torus', 'collectible', { x: 7, y: 1.1, z: 0 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-    makeObj('Altın Batı', 'torus', 'collectible', { x: -7, y: 1.1, z: 0 }, { x: 0.75, y: 0.75, z: 0.75 }, '#fbbf24'),
-    makeObj('Merkez Ödül', 'torus', 'collectible', { x: 0, y: 3.8, z: 0 }, { x: 0.85, y: 0.85, z: 0.85 }, '#fbbf24'),
-    makeObj('Lazer Kapanı', 'cone', 'hazard', { x: 4.5, y: 0.8, z: 4.5 }, { x: 1.1, y: 1.6, z: 1.1 }, '#f43f5e'),
-    makeObj('Devriye Bot #1', 'cone', 'npc', { x: -4.2, y: 0.9, z: -2.8 }, { x: 1.1, y: 1.4, z: 1.1 }, '#a855f7', {
-      moveSpeed: 3.1,
-      patrolRange: 4.5,
-    }),
-    makeObj('Devriye Bot #2', 'sphere', 'npc', { x: 4.2, y: 0.9, z: -5.5 }, { x: 1.15, y: 1.15, z: 1.15 }, '#c084fc', {
-      moveSpeed: 3.6,
-      patrolRange: 4.2,
-    }),
-    makeObj('Arena Çıkışı', 'cylinder', 'goal', { x: 0, y: 1.5, z: -9.2 }, { x: 1.6, y: 2.4, z: 1.6 }, '#10b981'),
-  ];
-}
-
-function generateLevelFromPrompt(prompt: string): {
-  objects: StageObject3D[];
-  skyTheme?: SkyThemeId;
-  summary: string;
-} {
-  const lower = prompt.toLowerCase();
-  const numMatch = lower.match(/(\d+)\s*(altın|coin|bot|npc|düşman|engel|tuzak|platform)/i);
-  const coinMatch = lower.match(/(\d+)\s*(altın|coin)/i);
-  const botMatch = lower.match(/(\d+)\s*(bot|npc|düşman)/i);
-  const hazardMatch = lower.match(/(\d+)\s*(engel|tuzak|lazer|lav)/i);
-
-  const coinsCount = Math.min(10, Math.max(2, Number(coinMatch?.[1] ?? (numMatch?.[2]?.includes('altın') ? numMatch[1] : 4))));
-  const botsCount = Math.min(6, Math.max(1, Number(botMatch?.[1] ?? (lower.includes('bot') || lower.includes('npc') || lower.includes('düşman') ? 2 : 1))));
-  const hazardCount = Math.min(6, Math.max(1, Number(hazardMatch?.[1] ?? (lower.includes('lav') || lower.includes('tuzak') || lower.includes('engel') ? 2 : 1))));
-  const hasBounce = /trambolin|zıpla|bounce|yay/.test(lower) || !lower.trim();
-  const hasMoving = /hareketli|asansör|köprü|moving/.test(lower) || !lower.trim();
-  const isTower = /kule|dikey|tower|yukarı/.test(lower);
-
-  let skyTheme: SkyThemeId | undefined;
-  if (/neon|siber/.test(lower)) skyTheme = 'neon';
-  else if (/gün\s*batım|sunset|lav/.test(lower)) skyTheme = 'sunset';
-  else if (/gökyüzü|bulut|mavi|sky/.test(lower)) skyTheme = 'sky';
-
-  const objects: StageObject3D[] = [
-    makeObj('AI Kahraman', 'mannequin', 'player', { x: 0, y: 1.6, z: 7 }, { x: 1, y: 1, z: 1 }, '#38bdf8', {
-      pose: clonePose(),
-      moveSpeed: 8.2,
-      jumpForce: 10.8,
-    }),
-    makeObj('Başlangıç Alanı', 'box', 'solid', { x: 0, y: -0.5, z: 6.5 }, { x: 7.5, y: 1, z: 6.5 }, '#1e293b'),
-  ];
-
-  const steps = Math.max(4, coinsCount + 1);
-  let curY = 0.5;
-  let curZ = 1.5;
-  let curX = 0;
-
-  for (let i = 0; i < steps; i++) {
-    curZ -= isTower ? 3.2 : 4.6;
-    curY += isTower ? 1.8 : i % 2 === 0 ? 0.8 : 0.4;
-    curX = i % 2 === 0 ? 1.8 : -1.8;
-
-    const isMovingStep = hasMoving && i === Math.floor(steps / 2);
-    objects.push(
-      makeObj(
-        isMovingStep ? `Hareketli Platform #${i + 1}` : `Platform #${i + 1}`,
-        'box',
-        isMovingStep ? 'moving' : 'solid',
-        { x: isMovingStep ? 0 : curX, y: curY, z: curZ },
-        { x: 4.5, y: 0.7, z: 3.4 },
-        isMovingStep ? '#06b6d4' : '#334155',
-        isMovingStep ? { moveSpeed: 2.3, patrolRange: 3.2, patrolAxis: 'x' } : {},
-      ),
-    );
-
-    if (i < coinsCount) {
-      objects.push(
-        makeObj(
-          `AI Altın #${i + 1}`,
-          'torus',
-          'collectible',
-          { x: isMovingStep ? 0 : curX, y: curY + 1.25, z: curZ },
-          { x: 0.72, y: 0.72, z: 0.72 },
-          '#fbbf24',
-        ),
-      );
-    }
-
-    if (hasBounce && i === 1) {
-      objects.push(
-        makeObj(
-          'AI Trambolin',
-          'cylinder',
-          'bounce',
-          { x: curX, y: curY + 0.5, z: curZ + 0.7 },
-          { x: 1.6, y: 0.35, z: 1.6 },
-          '#84cc16',
-          { bounceForce: 18 },
-        ),
-      );
-    }
-
-    if (i === Math.floor(steps / 2) + 1) {
-      objects.push(
-        makeObj(
-          'AI Checkpoint',
-          'cylinder',
-          'checkpoint',
-          { x: curX - 1.2, y: curY + 1.2, z: curZ },
-          { x: 0.85, y: 1.7, z: 0.85 },
-          '#2dd4bf',
-        ),
-      );
-    }
-  }
-
-  // Final platform + bots + hazards + goal
-  const endZ = curZ - 5.2;
-  const endY = curY + 0.6;
-  objects.push(
-    makeObj('Final Arenası', 'box', 'solid', { x: 0, y: endY, z: endZ }, { x: 9, y: 0.9, z: 7 }, '#1e293b'),
-  );
-
-  for (let b = 0; b < botsCount; b++) {
-    objects.push(
-      makeObj(
-        `AI Devriye Bot #${b + 1}`,
-        'cone',
-        'npc',
-        { x: (b % 2 === 0 ? -1 : 1) * 1.5, y: endY + 1.15, z: endZ + 1.4 - b * 1.3 },
-        { x: 0.95, y: 1.4, z: 0.95 },
-        '#a855f7',
-        { moveSpeed: 2.5 + b * 0.4, patrolRange: 2.8 },
-      ),
-    );
-  }
-
-  for (let h = 0; h < hazardCount; h++) {
-    objects.push(
-      makeObj(
-        `AI Engel #${h + 1}`,
-        'box',
-        'hazard',
-        { x: -2.4 + h * 2.2, y: endY + 0.85, z: endZ + 2.2 },
-        { x: 1.1, y: 0.85, z: 1.1 },
-        '#f43f5e',
-      ),
-    );
-  }
-
-  objects.push(
-    makeObj('Zafer Portalı', 'cylinder', 'goal', { x: 0, y: endY + 1.6, z: endZ - 2 }, { x: 1.7, y: 2.4, z: 1.7 }, '#10b981'),
-  );
-
-  return {
-    objects,
-    skyTheme,
-    summary: `Prompt üretildi: ${coinsCount} altın, ${botsCount} devriye bot, ${hazardCount} engel${hasBounce ? ', trambolin' : ''}${hasMoving ? ', hareketli platform' : ''}.`,
-  };
-}
+import { playGameSfx, SynthMusicLoop } from './game/gameAudio';
+import { buildStandaloneHtmlGame } from './game/gameHtmlExport';
+import {
+  generateLevelFromPrompt,
+  inferRole,
+  makeTemplate,
+  ROLE_META,
+  SKY_THEMES,
+  type CameraViewMode,
+  type GameRulesConfig,
+  type GizmoMode,
+  type SkyThemeId,
+} from './game/gameTemplates';
 
 function buildMeshForObject(obj: StageObject3D): THREE.Group {
   const group = new THREE.Group();
@@ -505,13 +70,17 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
     roughness: obj.roughness ?? 0.42,
     metalness: obj.metalness ?? 0.16,
     emissive: new THREE.Color(
-      role === 'goal' || role === 'hazard' || role === 'bounce' || role === 'checkpoint'
+      role === 'goal' ||
+        role === 'hazard' ||
+        role === 'bounce' ||
+        role === 'checkpoint' ||
+        role === 'powerup'
         ? obj.color
         : '#000000',
     ),
     emissiveIntensity:
-      role === 'goal'
-        ? 0.4
+      role === 'goal' || role === 'powerup'
+        ? 0.42
         : role === 'bounce' || role === 'checkpoint'
           ? 0.35
           : role === 'hazard'
@@ -521,40 +90,83 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
 
   if (obj.kind === 'mannequin' || role === 'player') {
     const bodyGroup = new THREE.Group();
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.68, 6, 12), material);
-    torso.position.y = 0.72;
+    const limbMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.66, 0.32), material);
+    torso.position.y = 0.88;
     torso.castShadow = true;
+
     const head = new THREE.Mesh(
       new THREE.SphereGeometry(0.24, 16, 12),
       new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.3 }),
     );
-    head.position.y = 1.44;
+    head.position.y = 1.48;
     head.castShadow = true;
+
     const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.1, 0.16),
-      new THREE.MeshStandardMaterial({ color: '#0284c7', emissive: '#38bdf8', emissiveIntensity: 0.8 }),
+      new THREE.BoxGeometry(0.32, 0.1, 0.15),
+      new THREE.MeshStandardMaterial({ color: '#0284c7', emissive: '#38bdf8', emissiveIntensity: 0.9 }),
     );
-    visor.position.set(0, 1.46, -0.18);
-    bodyGroup.add(torso, head, visor);
+    visor.position.set(0, 1.5, -0.18);
+
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), material);
+    leftArm.position.set(-0.38, 0.86, 0);
+    leftArm.name = 'leftArm';
+    leftArm.castShadow = true;
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), material);
+    rightArm.position.set(0.38, 0.86, 0);
+    rightArm.name = 'rightArm';
+    rightArm.castShadow = true;
+
+    const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.18), limbMat);
+    leftLeg.position.set(-0.15, 0.28, 0);
+    leftLeg.name = 'leftLeg';
+    leftLeg.castShadow = true;
+
+    const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.18), limbMat);
+    rightLeg.position.set(0.15, 0.28, 0);
+    rightLeg.name = 'rightLeg';
+    rightLeg.castShadow = true;
+
+    const shieldAura = new THREE.Mesh(
+      new THREE.RingGeometry(0.76, 0.9, 32),
+      new THREE.MeshBasicMaterial({
+        color: '#818cf8',
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+      }),
+    );
+    shieldAura.rotation.x = -Math.PI / 2;
+    shieldAura.position.y = 0.06;
+    shieldAura.name = 'shieldAura';
+    shieldAura.visible = false;
+
+    bodyGroup.add(torso, head, visor, leftArm, rightArm, leftLeg, rightLeg, shieldAura);
     group.add(bodyGroup);
   } else {
     let geom: THREE.BufferGeometry;
-    switch (obj.kind) {
-      case 'sphere':
-        geom = new THREE.SphereGeometry(0.5, 20, 16);
-        break;
-      case 'cylinder':
-        geom = new THREE.CylinderGeometry(0.5, 0.5, 1, 20);
-        break;
-      case 'cone':
-        geom = new THREE.ConeGeometry(0.5, 1, 18);
-        break;
-      case 'torus':
-        geom = new THREE.TorusGeometry(0.42, 0.16, 12, 24);
-        break;
-      default:
-        geom = new THREE.BoxGeometry(1, 1, 1);
-        break;
+    if (role === 'powerup') {
+      geom = new THREE.OctahedronGeometry(0.52, 0);
+    } else {
+      switch (obj.kind) {
+        case 'sphere':
+          geom = new THREE.SphereGeometry(0.5, 20, 16);
+          break;
+        case 'cylinder':
+          geom = new THREE.CylinderGeometry(0.5, 0.5, 1, 20);
+          break;
+        case 'cone':
+          geom = new THREE.ConeGeometry(0.5, 1, 18);
+          break;
+        case 'torus':
+          geom = new THREE.TorusGeometry(0.42, 0.16, 12, 24);
+          break;
+        default:
+          geom = new THREE.BoxGeometry(1, 1, 1);
+          break;
+      }
     }
     const mesh = new THREE.Mesh(geom, material);
     mesh.castShadow = true;
@@ -569,7 +181,7 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
         color: ROLE_META[role].ringColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.78,
+        opacity: 0.76,
       }),
     );
     ring.rotation.x = -Math.PI / 2;
@@ -588,280 +200,6 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
   return group;
 }
 
-function buildStandaloneHtmlGame(
-  projectName: string,
-  objects: StageObject3D[],
-  cameraMode: CameraViewMode,
-  skyTheme: SkyThemeId,
-  rules: GameRulesConfig,
-): string {
-  const sky = SKY_THEMES[skyTheme];
-  const payload = JSON.stringify(
-    objects.map((o) => ({
-      id: o.id,
-      name: o.name,
-      kind: o.kind,
-      role: inferRole(o),
-      position: o.position,
-      rotation: o.rotation,
-      scale: o.scale,
-      color: o.color,
-      moveSpeed: o.moveSpeed ?? 7.8,
-      jumpForce: o.jumpForce ?? 10.6,
-      patrolRange: o.patrolRange ?? 3,
-      patrolAxis: o.patrolAxis ?? 'x',
-      bounceForce: o.bounceForce ?? 18,
-    })),
-  );
-  const cfgJson = JSON.stringify({ cameraMode, sky, rules });
-
-  return `<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0" />
-<title>${projectName.replace(/</g, '&lt;')} — Alpemox Game Engine v2 Export</title>
-<style>
-  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:${sky.bg};font-family:system-ui,-apple-system,sans-serif;color:#f8fafc}
-  #hud{position:fixed;top:16px;left:16px;display:flex;gap:14px;background:rgba(15,23,42,.8);backdrop-filter:blur(8px);padding:10px 18px;border-radius:12px;border:1px solid rgba(255,255,255,.14);font-size:14px;z-index:10}
-  #banner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.76);z-index:20;flex-direction:column;gap:14px}
-  #banner.show{display:flex}
-  button{background:#38bdf8;color:#020617;border:0;padding:10px 20px;border-radius:10px;font-weight:700;cursor:pointer}
-  #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.74);padding:8px 16px;border-radius:999px;font-size:12px;color:#cbd5e1;border:1px solid rgba(255,255,255,.12)}
-</style>
-</head>
-<body>
-<div id="hud"><span>Skor: <b id="score">0</b></span><span>Altın: <b id="coins">0</b></span><span>Can: <b id="hp">3</b></span></div>
-<div id="banner"><h1 id="statusText">Oyun Bitti</h1><button onclick="location.reload()">Tekrar Oyna</button></div>
-<div id="hint">WASD/Ok: Hareket • Space: Zıpla (2x) • Shift: Dash • F: Ateş • Alpemox Game Engine v2</div>
-<script type="module">
-import * as THREE from 'https://unpkg.com/three@0.171.0/build/three.module.js';
-const LEVEL = ${payload};
-const CFG = ${cfgJson};
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(CFG.sky.bg);
-scene.fog = new THREE.Fog(CFG.sky.fog, 22, 68);
-const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 180);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-document.body.appendChild(renderer.domElement);
-scene.add(new THREE.AmbientLight(CFG.sky.ambient, 0.7));
-const dir = new THREE.DirectionalLight(CFG.sky.dir, 1.45);
-dir.position.set(12, 22, 10);
-dir.castShadow = true;
-scene.add(dir);
-const grid = new THREE.GridHelper(64, 64, CFG.sky.grid1, CFG.sky.grid2);
-grid.position.y = -1;
-scene.add(grid);
-
-const solids = [], movings = [], bounces = [], coins = [], hazards = [], npcs = [], checkpoints = [], goals = [];
-const particles = [], shots = [];
-let playerMesh = null, playerCfg = { moveSpeed: 7.8, jumpForce: 10.6 }, spawnPos = new THREE.Vector3(0, 2, 5);
-let yaw = 0;
-
-function spawnBurst(pos, colorHex, count = 12) {
-  for (let i = 0; i < count; i++) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.14, 0.14),
-      new THREE.MeshBasicMaterial({ color: colorHex })
-    );
-    m.position.copy(pos);
-    scene.add(m);
-    particles.push({
-      mesh: m,
-      vel: new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 6 + 2, (Math.random() - 0.5) * 7),
-      life: 0.55
-    });
-  }
-}
-
-for (const o of LEVEL) {
-  const mat = new THREE.MeshStandardMaterial({
-    color: o.color || '#38bdf8',
-    roughness: 0.42,
-    metalness: 0.2,
-    emissive: (o.role === 'goal' || o.role === 'bounce' || o.role === 'checkpoint' || o.role === 'hazard') ? o.color : '#000000',
-    emissiveIntensity: o.role === 'goal' || o.role === 'bounce' ? 0.35 : 0.15
-  });
-  let geom;
-  if (o.kind === 'sphere') geom = new THREE.SphereGeometry(0.5, 18, 14);
-  else if (o.kind === 'cylinder') geom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
-  else if (o.kind === 'cone') geom = new THREE.ConeGeometry(0.5, 1, 16);
-  else if (o.kind === 'torus') geom = new THREE.TorusGeometry(0.42, 0.16, 12, 24);
-  else if (o.kind === 'mannequin' || o.role === 'player') geom = new THREE.CapsuleGeometry(0.34, 0.85, 6, 12);
-  else geom = new THREE.BoxGeometry(1, 1, 1);
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(o.position.x, o.position.y, o.position.z);
-  mesh.rotation.set(o.rotation.x * Math.PI / 180, o.rotation.y * Math.PI / 180, o.rotation.z * Math.PI / 180);
-  mesh.scale.set(o.scale.x, o.scale.y, o.scale.z);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  scene.add(mesh);
-  if (o.role === 'player' && !playerMesh) {
-    playerMesh = mesh; playerCfg = o; spawnPos.copy(mesh.position);
-    if (CFG.cameraMode === 'fps') playerMesh.visible = false;
-  } else if (o.role === 'solid') solids.push({ mesh, scale: o.scale });
-  else if (o.role === 'moving') movings.push({ mesh, scale: o.scale, base: { ...o.position }, prev: new THREE.Vector3(o.position.x, o.position.y, o.position.z), speed: o.moveSpeed || 2.2, range: o.patrolRange || 3, axis: o.patrolAxis || 'x' });
-  else if (o.role === 'bounce') bounces.push({ mesh, force: o.bounceForce || 18, radius: Math.max(o.scale.x, o.scale.z) * 0.55 });
-  else if (o.role === 'collectible') coins.push({ mesh, collected: false });
-  else if (o.role === 'hazard') hazards.push({ mesh, radius: Math.max(o.scale.x, o.scale.z) * 0.55 });
-  else if (o.role === 'checkpoint') checkpoints.push({ mesh, active: false });
-  else if (o.role === 'npc') npcs.push({ mesh, baseX: o.position.x, speed: o.moveSpeed || 2.5, range: o.patrolRange || 3, alive: true });
-  else if (o.role === 'goal') goals.push({ mesh });
-}
-if (!playerMesh) {
-  playerMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.8, 6, 12), new THREE.MeshStandardMaterial({ color: '#38bdf8' }));
-  playerMesh.position.copy(spawnPos);
-  scene.add(playerMesh);
-}
-const keys = {};
-let jumpQueued = false, dashTimer = 0, dashCd = 0, shootCd = 0;
-addEventListener('keydown', (e) => {
-  if ((e.code === 'Space') && !keys['Space']) jumpQueued = true;
-  keys[e.code] = true;
-  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && CFG.rules.dashEnabled && dashCd <= 0) {
-    dashTimer = 0.18; dashCd = 1.0; spawnBurst(playerMesh.position, '#38bdf8', 8);
-  }
-  if (e.code === 'KeyF' && CFG.rules.shooterEnabled && shootCd <= 0) {
-    shootCd = 0.25;
-    const bolt = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), new THREE.MeshBasicMaterial({ color: '#38bdf8' }));
-    bolt.position.set(playerMesh.position.x, playerMesh.position.y + 0.9, playerMesh.position.z);
-    scene.add(bolt);
-    shots.push({ mesh: bolt, dir: new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), life: 1.5 });
-  }
-});
-addEventListener('keyup', (e) => { keys[e.code] = false; });
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-
-let vy = 0, grounded = false, jumpsUsed = 0, score = 0, collectedCount = 0, hp = 3, over = false, invuln = 0, elapsed = 0;
-let last = performance.now();
-function loop(now) {
-  requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000);
-  last = now;
-  elapsed += dt;
-  for (const c of coins) if (!c.collected) c.mesh.rotation.y += dt * 2.6;
-  for (const g of goals) g.mesh.rotation.y += dt * 1.2;
-  for (const m of movings) {
-    m.prev.copy(m.mesh.position);
-    const offset = Math.sin(elapsed * m.speed * 0.8) * m.range;
-    m.mesh.position.x = m.base.x + (m.axis === 'x' ? offset : 0);
-    m.mesh.position.y = m.base.y + (m.axis === 'y' ? offset : 0);
-    m.mesh.position.z = m.base.z + (m.axis === 'z' ? offset : 0);
-  }
-  for (const n of npcs) if (n.alive) n.mesh.position.x = n.baseX + Math.sin(elapsed * n.speed * 0.7) * n.range;
-
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i]; p.life -= dt;
-    p.vel.y -= 14 * dt;
-    p.mesh.position.addScaledVector(p.vel, dt);
-    p.mesh.scale.setScalar(Math.max(0.01, p.life * 1.8));
-    if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
-  }
-  for (let i = shots.length - 1; i >= 0; i--) {
-    const s = shots[i]; s.life -= dt;
-    s.mesh.position.addScaledVector(s.dir, 22 * dt);
-    let hit = false;
-    for (const n of npcs) {
-      if (n.alive && s.mesh.position.distanceTo(n.mesh.position) < 1.1) {
-        n.alive = false; n.mesh.visible = false; hit = true; score += 150; spawnBurst(n.mesh.position, '#a855f7', 16);
-      }
-    }
-    if (hit || s.life <= 0) { scene.remove(s.mesh); shots.splice(i, 1); }
-  }
-
-  if (!over) {
-    if (dashTimer > 0) dashTimer -= dt;
-    if (dashCd > 0) dashCd -= dt;
-    if (shootCd > 0) shootCd -= dt;
-    let dx = (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0) - (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0);
-    let dz = (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0) - (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0);
-    if (dx || dz) {
-      const len = Math.hypot(dx, dz);
-      const spd = (playerCfg.moveSpeed || 7.8) * (dashTimer > 0 ? 2.4 : 1);
-      playerMesh.position.x += (dx / len) * spd * dt;
-      playerMesh.position.z += (dz / len) * spd * dt;
-      yaw = Math.atan2(-dx, -dz);
-      playerMesh.rotation.y = yaw;
-    }
-    if (jumpQueued) {
-      const maxJumps = CFG.rules.doubleJump ? 2 : 1;
-      if (grounded || jumpsUsed < maxJumps) {
-        vy = playerCfg.jumpForce || 10.6; grounded = false; jumpsUsed++;
-        spawnBurst(playerMesh.position, '#38bdf8', 7);
-      }
-      jumpQueued = false;
-    }
-    vy -= (CFG.rules.gravity || 22) * dt;
-    playerMesh.position.y += vy * dt;
-    grounded = false;
-
-    for (const s of [...solids, ...movings]) {
-      const hx = s.scale.x * 0.5 + 0.35, hz = s.scale.z * 0.5 + 0.35, top = s.mesh.position.y + s.scale.y * 0.5;
-      if (Math.abs(playerMesh.position.x - s.mesh.position.x) < hx && Math.abs(playerMesh.position.z - s.mesh.position.z) < hz) {
-        if (playerMesh.position.y <= top + 0.25 && playerMesh.position.y >= top - 1.2 && vy <= 0) {
-          playerMesh.position.y = top; vy = 0; grounded = true; jumpsUsed = 0;
-          if (s.prev) playerMesh.position.add(new THREE.Vector3().subVectors(s.mesh.position, s.prev));
-        }
-      }
-    }
-    for (const b of bounces) {
-      if (playerMesh.position.distanceTo(b.mesh.position) < b.radius + 0.5) {
-        vy = b.force; grounded = false; jumpsUsed = 1; spawnBurst(b.mesh.position, '#84cc16', 10);
-      }
-    }
-    if (playerMesh.position.y < -12) { hp--; playerMesh.position.copy(spawnPos); vy = 0; }
-    for (const c of coins) {
-      if (!c.collected && playerMesh.position.distanceTo(c.mesh.position) < 1.35) {
-        c.collected = true; c.mesh.visible = false; collectedCount++; score += 100; spawnBurst(c.mesh.position, '#fbbf24', 12);
-      }
-    }
-    for (const cp of checkpoints) {
-      if (!cp.active && playerMesh.position.distanceTo(cp.mesh.position) < 1.55) {
-        cp.active = true; spawnPos.set(cp.mesh.position.x, cp.mesh.position.y + 0.8, cp.mesh.position.z);
-        cp.mesh.material.color.set('#10b981'); spawnBurst(cp.mesh.position, '#10b981', 12);
-      }
-    }
-    if (invuln > 0) invuln -= dt;
-    for (const h of hazards) if (invuln <= 0 && playerMesh.position.distanceTo(h.mesh.position) < h.radius + 0.45) { hp--; invuln = 1.1; vy = 6; spawnBurst(playerMesh.position, '#f43f5e', 10); }
-    for (const n of npcs) if (n.alive && invuln <= 0 && playerMesh.position.distanceTo(n.mesh.position) < 1.05) { hp--; invuln = 1.1; vy = 6; spawnBurst(playerMesh.position, '#f43f5e', 10); }
-    for (const g of goals) {
-      if (playerMesh.position.distanceTo(g.mesh.position) < 1.65) {
-        if (!CFG.rules.requireAllCoins || collectedCount >= coins.length) {
-          over = true;
-          document.getElementById('statusText').textContent = 'Bölüm Tamamlandı! Skor: ' + (score + 500);
-          document.getElementById('banner').classList.add('show');
-        }
-      }
-    }
-    if (hp <= 0 && !over) {
-      over = true;
-      document.getElementById('statusText').textContent = 'Oyun Bitti! Skor: ' + score;
-      document.getElementById('banner').classList.add('show');
-    }
-    document.getElementById('score').textContent = String(score);
-    document.getElementById('coins').textContent = collectedCount + '/' + coins.length;
-    document.getElementById('hp').textContent = String(Math.max(0, hp));
-  }
-
-  if (CFG.cameraMode === 'fps') {
-    camera.position.set(playerMesh.position.x, playerMesh.position.y + 1.35, playerMesh.position.z);
-    camera.lookAt(playerMesh.position.x - Math.sin(yaw) * 8, playerMesh.position.y + 1.1, playerMesh.position.z - Math.cos(yaw) * 8);
-  } else if (CFG.cameraMode === 'topdown') {
-    camera.position.lerp(new THREE.Vector3(playerMesh.position.x, playerMesh.position.y + 15, playerMesh.position.z + 6), 0.1);
-    camera.lookAt(playerMesh.position.x, playerMesh.position.y, playerMesh.position.z);
-  } else {
-    camera.position.lerp(new THREE.Vector3(playerMesh.position.x, playerMesh.position.y + 5.2, playerMesh.position.z + 8.8), 0.09);
-    camera.lookAt(playerMesh.position.x, playerMesh.position.y + 0.9, playerMesh.position.z);
-  }
-  renderer.render(scene, camera);
-}
-requestAnimationFrame(loop);
-</script>
-</body>
-</html>`;
-}
-
 export const GameEngineEditor: React.FC = () => {
   const {
     project,
@@ -875,25 +213,42 @@ export const GameEngineEditor: React.FC = () => {
   } = useStudioStore();
 
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
+  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const levelFileInputRef = useRef<HTMLInputElement | null>(null);
+
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformRef = useRef<TransformControls | null>(null);
   const boxHelperRef = useRef<THREE.BoxHelper | null>(null);
-  const lightsRef = useRef<{ ambient: THREE.AmbientLight; dir: THREE.DirectionalLight; grid: THREE.GridHelper } | null>(null);
+  const lightsRef = useRef<{
+    ambient: THREE.AmbientLight;
+    dir: THREE.DirectionalLight;
+    grid: THREE.GridHelper;
+  } | null>(null);
   const isGizmoDraggingRef = useRef(false);
+  const musicLoopRef = useRef<SynthMusicLoop | null>(null);
 
   const meshMapRef = useRef<Map<string, THREE.Group>>(new Map());
   const keysRef = useRef<Record<string, boolean>>({});
   const particlesRef = useRef<Array<{ mesh: THREE.Mesh; vel: THREE.Vector3; life: number }>>([]);
   const projectilesRef = useRef<Array<{ mesh: THREE.Mesh; dir: THREE.Vector3; life: number }>>([]);
+  const enemyShotsRef = useRef<Array<{ mesh: THREE.Mesh; dir: THREE.Vector3; life: number }>>([]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
+  const [snapSize, setSnapSize] = useState<number>(0);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>('tps');
   const [skyTheme, setSkyTheme] = useState<SkyThemeId>('cyber');
   const [rightTab, setRightTab] = useState<'entities' | 'rules'>('entities');
-  const [aiPrompt, setAiPrompt] = useState('5 altın, hareketli platform, trambolin ve 2 devriye botlu neon parkur');
+  const [aiPrompt, setAiPrompt] = useState(
+    '5 altın, hareketli platform, trambolin ve 2 takipçi botlu neon parkur',
+  );
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [sfxMuted, setSfxMuted] = useState(false);
+  const [actionPopup, setActionPopup] = useState<string | null>(null);
+  const popupTimerRef = useRef<number | null>(null);
+
   const [rules, setRules] = useState<GameRulesConfig>({
     doubleJump: true,
     dashEnabled: true,
@@ -906,6 +261,8 @@ export const GameEngineEditor: React.FC = () => {
   cameraModeRef.current = cameraMode;
   const rulesRef = useRef<GameRulesConfig>(rules);
   rulesRef.current = rules;
+  const sfxMutedRef = useRef<boolean>(sfxMuted);
+  sfxMutedRef.current = sfxMuted;
 
   const playStateRef = useRef({
     playing: false,
@@ -914,6 +271,8 @@ export const GameEngineEditor: React.FC = () => {
     totalCoins: 0,
     hp: 3,
     elapsed: 0,
+    fps: 60,
+    shieldTimer: 0,
     outcome: 'idle' as 'idle' | 'playing' | 'won' | 'lost',
     vy: 0,
     grounded: false,
@@ -923,10 +282,13 @@ export const GameEngineEditor: React.FC = () => {
     dashCd: 0,
     shootCd: 0,
     yaw: 0,
+    walkPhase: 0,
     invuln: 0,
     collectedIds: new Set<string>(),
+    powerupIds: new Set<string>(),
     defeatedNpcIds: new Set<string>(),
     checkpointIds: new Set<string>(),
+    npcFireCd: new Map<string, number>(),
     playerId: '' as string,
     playerPos: new THREE.Vector3(0, 1.5, 5),
     spawnPos: new THREE.Vector3(0, 1.5, 5),
@@ -939,6 +301,8 @@ export const GameEngineEditor: React.FC = () => {
     totalCoins: 0,
     hp: 3,
     elapsed: 0,
+    fps: 60,
+    shieldActive: false,
     outcome: 'idle' as 'idle' | 'playing' | 'won' | 'lost',
   });
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
@@ -951,6 +315,12 @@ export const GameEngineEditor: React.FC = () => {
     () => objects3d.find((o) => o.id === selectedObject3DId) ?? objects3d[0] ?? null,
     [objects3d, selectedObject3DId],
   );
+
+  const triggerPopup = useCallback((msg: string) => {
+    setActionPopup(msg);
+    if (popupTimerRef.current !== null) window.clearTimeout(popupTimerRef.current);
+    popupTimerRef.current = window.setTimeout(() => setActionPopup(null), 1500);
+  }, []);
 
   const spawnParticleBurst = useCallback((pos: THREE.Vector3, colorHex: string, count = 10) => {
     const scene = sceneRef.current;
@@ -980,7 +350,7 @@ export const GameEngineEditor: React.FC = () => {
     if (!ps.playing || ps.outcome !== 'playing' || !scene || !rulesRef.current.shooterEnabled || ps.shootCd > 0) {
       return;
     }
-    ps.shootCd = 0.25;
+    ps.shootCd = 0.24;
     const bolt = new THREE.Mesh(
       new THREE.SphereGeometry(0.18, 12, 10),
       new THREE.MeshBasicMaterial({ color: '#38bdf8' }),
@@ -992,7 +362,7 @@ export const GameEngineEditor: React.FC = () => {
       dir: new THREE.Vector3(-Math.sin(ps.yaw), 0, -Math.cos(ps.yaw)).normalize(),
       life: 1.4,
     });
-    playSynthTone('shoot');
+    playGameSfx('shoot', sfxMutedRef.current);
   }, []);
 
   const triggerDash = useCallback(() => {
@@ -1003,7 +373,7 @@ export const GameEngineEditor: React.FC = () => {
     ps.dashTimer = 0.18;
     ps.dashCd = 0.95;
     spawnParticleBurst(ps.playerPos, '#38bdf8', 9);
-    playSynthTone('dash');
+    playGameSfx('dash', sfxMutedRef.current);
   }, [spawnParticleBurst]);
 
   const rebuildSceneObjects = useCallback(() => {
@@ -1020,10 +390,10 @@ export const GameEngineEditor: React.FC = () => {
     particlesRef.current = [];
     for (const s of projectilesRef.current) scene.remove(s.mesh);
     projectilesRef.current = [];
+    for (const e of enemyShotsRef.current) scene.remove(e.mesh);
+    enemyShotsRef.current = [];
 
-    meshMapRef.current.forEach((grp) => {
-      scene.remove(grp);
-    });
+    meshMapRef.current.forEach((grp) => scene.remove(grp));
     meshMapRef.current.clear();
 
     for (const obj of objectsRef.current) {
@@ -1033,6 +403,21 @@ export const GameEngineEditor: React.FC = () => {
       meshMapRef.current.set(obj.id, grp);
     }
   }, []);
+
+  // Sync music loop with isPlaying + musicEnabled
+  useEffect(() => {
+    if (!musicLoopRef.current) {
+      musicLoopRef.current = new SynthMusicLoop();
+    }
+    if (isPlaying && musicEnabled && !sfxMuted) {
+      musicLoopRef.current.start();
+    } else {
+      musicLoopRef.current.stop();
+    }
+    return () => {
+      musicLoopRef.current?.stop();
+    };
+  }, [isPlaying, musicEnabled, sfxMuted]);
 
   // Sync Sky Theme
   useEffect(() => {
@@ -1046,7 +431,7 @@ export const GameEngineEditor: React.FC = () => {
     lights.dir.color.set(sky.dir);
   }, [skyTheme]);
 
-  // Sync TransformControls gizmo attachment & BoxHelper in edit mode
+  // Sync TransformControls gizmo + Grid Snap
   useEffect(() => {
     const scene = sceneRef.current;
     const tControls = transformRef.current;
@@ -1056,6 +441,9 @@ export const GameEngineEditor: React.FC = () => {
       scene.remove(boxHelperRef.current);
       boxHelperRef.current = null;
     }
+
+    tControls.setTranslationSnap(snapSize > 0 ? snapSize : null);
+    tControls.setRotationSnap(snapSize > 0 ? THREE.MathUtils.degToRad(15) : null);
 
     if (isPlaying || !selectedObj) {
       tControls.detach();
@@ -1072,9 +460,9 @@ export const GameEngineEditor: React.FC = () => {
     } else {
       tControls.detach();
     }
-  }, [selectedObj, gizmoMode, isPlaying, objects3d]);
+  }, [selectedObj, gizmoMode, snapSize, isPlaying, objects3d]);
 
-  // Initialize Three.js viewport + TransformControls
+  // Initialize Three.js viewport + Engine Loop
   useEffect(() => {
     const host = canvasHostRef.current;
     if (!host) return;
@@ -1105,7 +493,6 @@ export const GameEngineEditor: React.FC = () => {
     controls.target.set(0, 1.5, -2);
     controlsRef.current = controls;
 
-    // Three.js TransformControls Gizmo (from PlayCanvas/Three.js Editor pattern)
     const tControls = new TransformControls(camera, renderer.domElement);
     tControls.setSize(1.05);
     tControls.addEventListener('dragging-changed', (ev) => {
@@ -1155,7 +542,6 @@ export const GameEngineEditor: React.FC = () => {
     scene.add(grid);
     lightsRef.current = { ambient, dir: dirLight, grid };
 
-    // Raycast click-to-select in Edit Mode (respecting gizmo drag)
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let downX = 0;
@@ -1200,17 +586,26 @@ export const GameEngineEditor: React.FC = () => {
     let rafId = 0;
     let lastTime = performance.now();
     let lastHudSync = 0;
+    let frameCount = 0;
+    let fpsClock = performance.now();
 
     const animate = (now: number) => {
       rafId = requestAnimationFrame(animate);
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
 
+      frameCount += 1;
+      if (now - fpsClock >= 450) {
+        playStateRef.current.fps = Math.round((frameCount * 1000) / Math.max(1, now - fpsClock));
+        frameCount = 0;
+        fpsClock = now;
+      }
+
       const ps = playStateRef.current;
       const list = objectsRef.current;
       const curRules = rulesRef.current;
 
-      // Update 3D particles
+      // Particles update
       for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
         p.life -= dt;
@@ -1223,12 +618,12 @@ export const GameEngineEditor: React.FC = () => {
         }
       }
 
-      // Spin coins & portals gently
+      // Spin collectibles, powerups, portals
       for (const obj of list) {
         const grp = meshMapRef.current.get(obj.id);
         if (!grp) continue;
         const role = inferRole(obj);
-        if (role === 'collectible') grp.rotation.y += dt * 2.5;
+        if (role === 'collectible' || role === 'powerup') grp.rotation.y += dt * 2.5;
         else if (role === 'goal' || role === 'checkpoint') grp.rotation.y += dt * 1.2;
       }
 
@@ -1237,8 +632,9 @@ export const GameEngineEditor: React.FC = () => {
         if (ps.dashTimer > 0) ps.dashTimer -= dt;
         if (ps.dashCd > 0) ps.dashCd -= dt;
         if (ps.shootCd > 0) ps.shootCd -= dt;
+        if (ps.shieldTimer > 0) ps.shieldTimer -= dt;
 
-        // Moving platforms update + store previous position for rider delta
+        // Moving platforms
         for (const obj of list) {
           if (inferRole(obj) !== 'moving') continue;
           const grp = meshMapRef.current.get(obj.id);
@@ -1253,17 +649,48 @@ export const GameEngineEditor: React.FC = () => {
           grp.position.z = obj.position.z + (axis === 'z' ? offset : 0);
         }
 
-        // NPC patrol movement
+        // Smart NPC AI (patrol / chase / turret)
         for (const obj of list) {
           if (inferRole(obj) !== 'npc' || ps.defeatedNpcIds.has(obj.id)) continue;
           const grp = meshMapRef.current.get(obj.id);
           if (!grp) continue;
-          const range = obj.patrolRange ?? 2.8;
+          const behavior = obj.npcBehavior ?? 'patrol';
           const speed = obj.moveSpeed ?? 2.6;
-          grp.position.x = obj.position.x + Math.sin(ps.elapsed * speed * 0.7) * range;
+          const distToPlayer = grp.position.distanceTo(ps.playerPos);
+
+          if (behavior === 'chase' && distToPlayer < 13) {
+            const dirVec = new THREE.Vector3().subVectors(ps.playerPos, grp.position);
+            dirVec.y = 0;
+            if (dirVec.length() > 0.35) {
+              dirVec.normalize();
+              grp.position.addScaledVector(dirVec, speed * 0.85 * dt);
+              grp.rotation.y = Math.atan2(-dirVec.x, -dirVec.z);
+            }
+          } else if (behavior === 'turret') {
+            grp.rotation.y += dt * 1.4;
+            const cd = (ps.npcFireCd.get(obj.id) ?? 1.2) - dt;
+            if (cd <= 0 && distToPlayer < 17) {
+              ps.npcFireCd.set(obj.id, 2.2);
+              const orb = new THREE.Mesh(
+                new THREE.SphereGeometry(0.22, 10, 10),
+                new THREE.MeshBasicMaterial({ color: '#f43f5e' }),
+              );
+              orb.position.copy(grp.position);
+              scene.add(orb);
+              const shotDir = new THREE.Vector3().subVectors(ps.playerPos, grp.position);
+              shotDir.y = 0;
+              shotDir.normalize();
+              enemyShotsRef.current.push({ mesh: orb, dir: shotDir, life: 2.2 });
+            } else {
+              ps.npcFireCd.set(obj.id, cd);
+            }
+          } else {
+            const range = obj.patrolRange ?? 2.8;
+            grp.position.x = obj.position.x + Math.sin(ps.elapsed * speed * 0.7) * range;
+          }
         }
 
-        // Player energy projectiles vs NPCs
+        // Player Projectiles vs NPCs
         for (let i = projectilesRef.current.length - 1; i >= 0; i--) {
           const proj = projectilesRef.current[i];
           proj.life -= dt;
@@ -1279,7 +706,8 @@ export const GameEngineEditor: React.FC = () => {
               ps.score += 150;
               hit = true;
               spawnParticleBurst(grp.position, '#a855f7', 16);
-              playSynthTone('coin');
+              playGameSfx('coin', sfxMutedRef.current);
+              triggerPopup('BOT YOK EDİLDİ +150!');
               break;
             }
           }
@@ -1289,10 +717,36 @@ export const GameEngineEditor: React.FC = () => {
           }
         }
 
+        // Turret Enemy Orbs vs Player
+        for (let i = enemyShotsRef.current.length - 1; i >= 0; i--) {
+          const es = enemyShotsRef.current[i];
+          es.life -= dt;
+          es.mesh.position.addScaledVector(es.dir, 10.5 * dt);
+          if (
+            ps.shieldTimer <= 0 &&
+            ps.invuln <= 0 &&
+            es.mesh.position.distanceTo(ps.playerPos) < 0.95
+          ) {
+            ps.hp -= 1;
+            ps.invuln = 1.0;
+            ps.vy = 5.2;
+            es.life = 0;
+            spawnParticleBurst(ps.playerPos, '#f43f5e', 10);
+            playGameSfx('hit', sfxMutedRef.current);
+            triggerPopup('-1 CAN!');
+          }
+          if (es.life <= 0) {
+            scene.remove(es.mesh);
+            enemyShotsRef.current.splice(i, 1);
+          }
+        }
+
         const playerCfg = list.find((o) => o.id === ps.playerId);
         const playerGrp = meshMapRef.current.get(ps.playerId);
         if (playerGrp) {
           playerGrp.visible = cameraModeRef.current !== 'fps';
+          const shieldMesh = playerGrp.getObjectByName('shieldAura');
+          if (shieldMesh) shieldMesh.visible = ps.shieldTimer > 0;
 
           const k = keysRef.current;
           const dx =
@@ -1303,15 +757,38 @@ export const GameEngineEditor: React.FC = () => {
             (k['KeyW'] || k['ArrowUp'] || k['PadUp'] ? 1 : 0);
 
           const baseSpeed = playerCfg?.moveSpeed ?? 7.8;
-          const moveSpeed = baseSpeed * (ps.dashTimer > 0 ? 2.4 : 1);
+          const moveSpeed = baseSpeed * (ps.dashTimer > 0 ? 2.4 : ps.shieldTimer > 0 ? 1.25 : 1);
           const jumpForce = playerCfg?.jumpForce ?? 10.6;
+          const isMoving = dx !== 0 || dz !== 0;
 
-          if (dx !== 0 || dz !== 0) {
+          if (isMoving) {
             const len = Math.hypot(dx, dz);
             ps.playerPos.x += (dx / len) * moveSpeed * dt;
             ps.playerPos.z += (dz / len) * moveSpeed * dt;
             ps.yaw = Math.atan2(-dx, -dz);
             playerGrp.rotation.y = ps.yaw;
+            ps.walkPhase += dt * 12;
+          }
+
+          // Animate articulated limbs (walk cycle / airborne tuck)
+          const lArm = playerGrp.getObjectByName('leftArm');
+          const rArm = playerGrp.getObjectByName('rightArm');
+          const lLeg = playerGrp.getObjectByName('leftLeg');
+          const rLeg = playerGrp.getObjectByName('rightLeg');
+          if (lArm && rArm && lLeg && rLeg) {
+            if (!ps.grounded) {
+              lArm.rotation.x = -0.8;
+              rArm.rotation.x = -0.8;
+              lLeg.rotation.x = 0.4;
+              rLeg.rotation.x = -0.35;
+            } else if (isMoving) {
+              lLeg.rotation.x = Math.sin(ps.walkPhase) * 0.65;
+              rLeg.rotation.x = -Math.sin(ps.walkPhase) * 0.65;
+              lArm.rotation.x = -Math.sin(ps.walkPhase) * 0.55;
+              rArm.rotation.x = Math.sin(ps.walkPhase) * 0.55;
+            } else {
+              lArm.rotation.x = rArm.rotation.x = lLeg.rotation.x = rLeg.rotation.x = 0;
+            }
           }
 
           if (ps.jumpQueued || k['PadJump']) {
@@ -1321,7 +798,7 @@ export const GameEngineEditor: React.FC = () => {
               ps.grounded = false;
               ps.jumpsUsed += 1;
               spawnParticleBurst(ps.playerPos, '#38bdf8', 7);
-              playSynthTone('jump');
+              playGameSfx('jump', sfxMutedRef.current);
             }
             ps.jumpQueued = false;
             k['PadJump'] = false;
@@ -1351,9 +828,7 @@ export const GameEngineEditor: React.FC = () => {
                 ps.jumpsUsed = 0;
                 if (role === 'moving' && grp) {
                   const prev = ps.movingPrevPos.get(obj.id);
-                  if (prev) {
-                    ps.playerPos.add(new THREE.Vector3().subVectors(grp.position, prev));
-                  }
+                  if (prev) ps.playerPos.add(new THREE.Vector3().subVectors(grp.position, prev));
                 }
               }
             }
@@ -1370,31 +845,53 @@ export const GameEngineEditor: React.FC = () => {
               ps.grounded = false;
               ps.jumpsUsed = 1;
               spawnParticleBurst(grp.position, '#84cc16', 12);
-              playSynthTone('bounce');
+              playGameSfx('bounce', sfxMutedRef.current);
             }
           }
 
-          // Out of bounds respawn to last checkpoint
+          // Out of bounds respawn
           if (ps.playerPos.y < -12) {
             ps.hp -= 1;
             ps.playerPos.copy(ps.spawnPos);
             ps.vy = 0;
-            playSynthTone('hit');
+            playGameSfx('hit', sfxMutedRef.current);
+            triggerPopup('DÜŞTÜ! -1 CAN');
           }
 
-          // Collectibles
+          // Power-Ups (Shield + Magnet + Speed)
+          for (const obj of list) {
+            if (!obj.visible || inferRole(obj) !== 'powerup') continue;
+            if (ps.powerupIds.has(obj.id)) continue;
+            const grp = meshMapRef.current.get(obj.id);
+            if (!grp) continue;
+            if (ps.playerPos.distanceTo(grp.position) < 1.45) {
+              ps.powerupIds.add(obj.id);
+              grp.visible = false;
+              ps.shieldTimer = 7.0;
+              ps.score += 75;
+              spawnParticleBurst(grp.position, '#818cf8', 15);
+              playGameSfx('powerup', sfxMutedRef.current);
+              triggerPopup('KALKAN + MIKNATIS AKTİF (7s)!');
+            }
+          }
+
+          // Collectibles (with magnet attraction while power-up active!)
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'collectible') continue;
             if (ps.collectedIds.has(obj.id)) continue;
             const grp = meshMapRef.current.get(obj.id);
             if (!grp) continue;
+            if (ps.shieldTimer > 0 && ps.playerPos.distanceTo(grp.position) < 6.5) {
+              grp.position.lerp(ps.playerPos, 0.14);
+            }
             if (ps.playerPos.distanceTo(grp.position) < 1.35) {
               ps.collectedIds.add(obj.id);
               grp.visible = false;
               ps.coins += 1;
               ps.score += 100;
               spawnParticleBurst(grp.position, '#fbbf24', 12);
-              playSynthTone('coin');
+              playGameSfx('coin', sfxMutedRef.current);
+              triggerPopup('+100 ALTIN!');
             }
           }
 
@@ -1408,30 +905,34 @@ export const GameEngineEditor: React.FC = () => {
               ps.checkpointIds.add(obj.id);
               ps.spawnPos.set(grp.position.x, grp.position.y + 0.9, grp.position.z);
               spawnParticleBurst(grp.position, '#2dd4bf', 14);
-              playSynthTone('checkpoint');
+              playGameSfx('checkpoint', sfxMutedRef.current);
+              triggerPopup('CHECKPOINT KAYDEDİLDİ!');
             }
           }
 
-          // Hazards & NPCs
+          // Hazards & NPC contact damage (blocked if Shield active!)
           if (ps.invuln > 0) ps.invuln -= dt;
-          for (const obj of list) {
-            if (!obj.visible) continue;
-            const role = inferRole(obj);
-            if (role === 'npc' && ps.defeatedNpcIds.has(obj.id)) continue;
-            if (role !== 'hazard' && role !== 'npc') continue;
-            const grp = meshMapRef.current.get(obj.id);
-            if (!grp) continue;
-            const hitRadius = Math.max(Math.abs(obj.scale.x), Math.abs(obj.scale.z)) * 0.5 + 0.4;
-            if (ps.invuln <= 0 && ps.playerPos.distanceTo(grp.position) < hitRadius) {
-              ps.hp -= 1;
-              ps.invuln = 1.1;
-              ps.vy = 6.2;
-              spawnParticleBurst(ps.playerPos, '#f43f5e', 10);
-              playSynthTone('hit');
+          if (ps.shieldTimer <= 0) {
+            for (const obj of list) {
+              if (!obj.visible) continue;
+              const role = inferRole(obj);
+              if (role === 'npc' && ps.defeatedNpcIds.has(obj.id)) continue;
+              if (role !== 'hazard' && role !== 'npc') continue;
+              const grp = meshMapRef.current.get(obj.id);
+              if (!grp) continue;
+              const hitRadius = Math.max(Math.abs(obj.scale.x), Math.abs(obj.scale.z)) * 0.5 + 0.4;
+              if (ps.invuln <= 0 && ps.playerPos.distanceTo(grp.position) < hitRadius) {
+                ps.hp -= 1;
+                ps.invuln = 1.1;
+                ps.vy = 6.2;
+                spawnParticleBurst(ps.playerPos, '#f43f5e', 10);
+                playGameSfx('hit', sfxMutedRef.current);
+                triggerPopup('-1 CAN!');
+              }
             }
           }
 
-          // Goal portal check (optionally requires all coins)
+          // Goal portal check
           for (const obj of list) {
             if (!obj.visible || inferRole(obj) !== 'goal') continue;
             const grp = meshMapRef.current.get(obj.id);
@@ -1441,7 +942,7 @@ export const GameEngineEditor: React.FC = () => {
                 ps.outcome = 'won';
                 ps.score += 500;
                 spawnParticleBurst(grp.position, '#10b981', 22);
-                playSynthTone('win');
+                playGameSfx('win', sfxMutedRef.current);
               }
             }
           }
@@ -1471,10 +972,51 @@ export const GameEngineEditor: React.FC = () => {
             controls.target.lerp(new THREE.Vector3(ps.playerPos.x, ps.playerPos.y, ps.playerPos.z), 0.16);
             controls.update();
           } else {
-            const desiredCam = new THREE.Vector3(ps.playerPos.x, ps.playerPos.y + 5.2, ps.playerPos.z + 8.8);
+            const desiredCam = new THREE.Vector3(
+              ps.playerPos.x,
+              ps.playerPos.y + 5.2,
+              ps.playerPos.z + 8.8,
+            );
             camera.position.lerp(desiredCam, 0.1);
             controls.target.lerp(new THREE.Vector3(ps.playerPos.x, ps.playerPos.y + 1, ps.playerPos.z), 0.14);
             controls.update();
+          }
+
+          // Render 2D Radar Mini-Map
+          const radarCanvas = radarCanvasRef.current;
+          const rCtx = radarCanvas?.getContext('2d');
+          if (rCtx && radarCanvas) {
+            const cx = radarCanvas.width / 2;
+            const cy = radarCanvas.height / 2;
+            rCtx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+            rCtx.strokeStyle = 'rgba(56,189,248,0.22)';
+            rCtx.strokeRect(2, 2, radarCanvas.width - 4, radarCanvas.height - 4);
+            for (const obj of list) {
+              const role = inferRole(obj);
+              if (role === 'collectible' && ps.collectedIds.has(obj.id)) continue;
+              if (role === 'npc' && ps.defeatedNpcIds.has(obj.id)) continue;
+              const grp = meshMapRef.current.get(obj.id);
+              if (!grp) continue;
+              if (role !== 'collectible' && role !== 'npc' && role !== 'goal' && role !== 'powerup') continue;
+              const rx = cx + (grp.position.x - ps.playerPos.x) * 2.6;
+              const ry = cy + (grp.position.z - ps.playerPos.z) * 2.6;
+              if (rx < 4 || rx > radarCanvas.width - 4 || ry < 4 || ry > radarCanvas.height - 4) continue;
+              rCtx.fillStyle =
+                role === 'collectible'
+                  ? '#fbbf24'
+                  : role === 'npc'
+                    ? '#a855f7'
+                    : role === 'powerup'
+                      ? '#818cf8'
+                      : '#10b981';
+              rCtx.beginPath();
+              rCtx.arc(rx, ry, role === 'goal' ? 3.8 : 2.6, 0, Math.PI * 2);
+              rCtx.fill();
+            }
+            rCtx.fillStyle = '#38bdf8';
+            rCtx.beginPath();
+            rCtx.arc(cx, cy, 3.8, 0, Math.PI * 2);
+            rCtx.fill();
           }
         }
 
@@ -1486,10 +1028,16 @@ export const GameEngineEditor: React.FC = () => {
             totalCoins: ps.totalCoins,
             hp: ps.hp,
             elapsed: ps.elapsed,
+            fps: ps.fps,
+            shieldActive: ps.shieldTimer > 0,
             outcome: ps.outcome,
           });
         }
       } else {
+        if (now - lastHudSync > 250) {
+          lastHudSync = now;
+          setHud((prev) => ({ ...prev, fps: ps.fps }));
+        }
         controls.update();
       }
 
@@ -1512,30 +1060,26 @@ export const GameEngineEditor: React.FC = () => {
       sceneRef.current = null;
       transformRef.current = null;
     };
-  }, [rebuildSceneObjects, setSelectedObject3DId, skyTheme, spawnParticleBurst, update3DObject]);
+  }, [rebuildSceneObjects, setSelectedObject3DId, skyTheme, spawnParticleBurst, triggerPopup, update3DObject]);
 
-  // Rebuild meshes when store objects change in edit mode
   useEffect(() => {
     if (!isPlaying) {
       rebuildSceneObjects();
     }
   }, [objects3d, isPlaying, rebuildSceneObjects]);
 
-  // Keyboard listeners: Edit shortcuts (W/E/R gizmo) + Playtest movement/Dash/Shoot
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
         return;
       }
-
       if (!playStateRef.current.playing) {
         if (e.code === 'KeyT') setGizmoMode('translate');
         else if (e.code === 'KeyR') setGizmoMode('rotate');
         else if (e.code === 'KeyS' && e.shiftKey) setGizmoMode('scale');
         return;
       }
-
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
       }
@@ -1566,7 +1110,8 @@ export const GameEngineEditor: React.FC = () => {
     playStateRef.current.outcome = 'idle';
     keysRef.current = {};
     setIsPlaying(false);
-    setHud((prev) => ({ ...prev, outcome: 'idle' }));
+    setActionPopup(null);
+    setHud((prev) => ({ ...prev, outcome: 'idle', shieldActive: false }));
     rebuildSceneObjects();
   }, [rebuildSceneObjects]);
 
@@ -1604,6 +1149,8 @@ export const GameEngineEditor: React.FC = () => {
       totalCoins,
       hp: 3,
       elapsed: 0,
+      fps: playStateRef.current.fps,
+      shieldTimer: 0,
       outcome: 'playing',
       vy: 0,
       grounded: false,
@@ -1613,10 +1160,13 @@ export const GameEngineEditor: React.FC = () => {
       dashCd: 0,
       shootCd: 0,
       yaw: 0,
+      walkPhase: 0,
       invuln: 0,
       collectedIds: new Set<string>(),
+      powerupIds: new Set<string>(),
       defeatedNpcIds: new Set<string>(),
       checkpointIds: new Set<string>(),
+      npcFireCd: new Map<string, number>(),
       playerId: playerObj.id,
       playerPos: spawn.clone(),
       spawnPos: spawn,
@@ -1629,23 +1179,28 @@ export const GameEngineEditor: React.FC = () => {
       totalCoins,
       hp: 3,
       elapsed: 0,
+      fps: playStateRef.current.fps,
+      shieldActive: false,
       outcome: 'playing',
     });
     setIsPlaying(true);
     setStatusNotice(null);
   }, [add3DObject, rebuildSceneObjects]);
 
-  const handleLoadTemplate = (kind: 'platformer' | 'arena' | 'tower') => {
+  const handleLoadTemplate = (kind: 'platformer' | 'arena' | 'tower' | 'space') => {
     if (isPlaying) stopPlaytest();
     const items = makeTemplate(kind);
     replace3DObjects(items);
     setSelectedObject3DId(items[0]?.id ?? null);
+    if (kind === 'space') setSkyTheme('neon');
     setStatusNotice(
       kind === 'platformer'
-        ? 'Obby Parkur (Hareketli Köprü + Trambolin + Checkpoint) yüklendi!'
+        ? 'Obby Parkur (Takipçi Bot + Power-Up + Checkpoint) yüklendi!'
         : kind === 'tower'
-          ? 'Dikey Kule şablonu yüklendi. Trambolin ve asansör ile zirveye tırmanın!'
-          : 'Savaş Arenası yüklendi. F tuşu ile NPC’leri vurun, altınları toplayın!',
+          ? 'Dikey Kule şablonu yüklendi. Taretlere dikkat edip zirveye tırmanın!'
+          : kind === 'space'
+            ? 'Uzay İstasyonu yüklendi! Mıknatıs + Taret + Hiper Trambolin hazır.'
+            : 'Savaş Arenası yüklendi. F tuşu ile düşmanları vurun!',
     );
   };
 
@@ -1656,6 +1211,73 @@ export const GameEngineEditor: React.FC = () => {
     setSelectedObject3DId(result.objects[0]?.id ?? null);
     if (result.skyTheme) setSkyTheme(result.skyTheme);
     setStatusNotice(result.summary);
+  };
+
+  const handleDuplicateSelected = () => {
+    if (!selectedObj || isPlaying) return;
+    add3DObject(selectedObj.kind, {
+      name: `${selectedObj.name} Kopya`,
+      gameRole: inferRole(selectedObj),
+      position: {
+        x: selectedObj.position.x + 1.5,
+        y: selectedObj.position.y,
+        z: selectedObj.position.z,
+      },
+      rotation: { ...selectedObj.rotation },
+      scale: { ...selectedObj.scale },
+      color: selectedObj.color,
+      moveSpeed: selectedObj.moveSpeed,
+      jumpForce: selectedObj.jumpForce,
+      patrolRange: selectedObj.patrolRange,
+      patrolAxis: selectedObj.patrolAxis,
+      bounceForce: selectedObj.bounceForce,
+      npcBehavior: selectedObj.npcBehavior,
+      powerupType: selectedObj.powerupType,
+    });
+    setStatusNotice(`"${selectedObj.name}" çoğaltıldı.`);
+  };
+
+  const handleFocusSelected = () => {
+    if (!selectedObj || !controlsRef.current || !cameraRef.current || isPlaying) return;
+    const p = selectedObj.position;
+    controlsRef.current.target.set(p.x, p.y, p.z);
+    cameraRef.current.position.set(p.x + 6, p.y + 4.5, p.z + 7);
+    controlsRef.current.update();
+  };
+
+  const handleExportLevelJson = () => {
+    const data = JSON.stringify({ cameraMode, skyTheme, rules, objects3d }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(project.name || 'alpemox').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.alpemox-level.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatusNotice('Seviye JSON dosyası (.alpemox-level.json) kaydedildi.');
+  };
+
+  const handleImportLevelJson = (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        if (Array.isArray(parsed.objects3d)) {
+          if (isPlaying) stopPlaytest();
+          replace3DObjects(parsed.objects3d as StageObject3D[]);
+          if (parsed.cameraMode) setCameraMode(parsed.cameraMode as CameraViewMode);
+          if (parsed.skyTheme) setSkyTheme(parsed.skyTheme as SkyThemeId);
+          if (parsed.rules) setRules(parsed.rules as GameRulesConfig);
+          setStatusNotice(`${file.name} başarıyla yüklendi (${parsed.objects3d.length} varlık).`);
+        }
+      } catch {
+        setStatusNotice('Geçersiz seviye JSON dosyası.');
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
   };
 
   const handleQuickAdd = (role: GameRole) => {
@@ -1691,6 +1313,15 @@ export const GameEngineEditor: React.FC = () => {
         color: '#84cc16',
         bounceForce: 18,
       });
+    } else if (role === 'powerup') {
+      add3DObject('sphere', {
+        name: `Power-Up ${objects3d.length + 1}`,
+        gameRole: 'powerup',
+        position: { x: offset, y: 1.4, z: 2 },
+        scale: { x: 0.85, y: 0.85, z: 0.85 },
+        color: '#6366f1',
+        powerupType: 'magnet',
+      });
     } else if (role === 'checkpoint') {
       add3DObject('cylinder', {
         name: `Checkpoint ${objects3d.length + 1}`,
@@ -1725,13 +1356,14 @@ export const GameEngineEditor: React.FC = () => {
       });
     } else if (role === 'npc') {
       add3DObject('cone', {
-        name: `Devriye NPC ${objects3d.length + 1}`,
+        name: `Takipçi Bot ${objects3d.length + 1}`,
         gameRole: 'npc',
         position: { x: offset, y: 1, z: -3 },
-        scale: { x: 0.9, y: 1.3, z: 0.9 },
+        scale: { x: 0.95, y: 1.35, z: 0.95 },
         color: '#a855f7',
-        moveSpeed: 2.6,
-        patrolRange: 2.5,
+        moveSpeed: 2.8,
+        patrolRange: 2.8,
+        npcBehavior: 'chase',
       });
     } else if (role === 'goal') {
       add3DObject('cylinder', {
@@ -1763,7 +1395,7 @@ export const GameEngineEditor: React.FC = () => {
     a.download = `${slug || 'alpemox-game'}-playable.html`;
     a.click();
     URL.revokeObjectURL(url);
-    setStatusNotice('Tek dosya oynanabilir 3D Web Oyunu (.HTML) indirildi! (Tüm kurallar & kamera dahil)');
+    setStatusNotice('Tek dosya oynanabilir 3D Web Oyunu (.HTML v3) indirildi!');
   };
 
   const setVirtualPadKey = (code: string, active: boolean) => {
@@ -1772,12 +1404,12 @@ export const GameEngineEditor: React.FC = () => {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-[#080b12] text-slate-100 select-none">
-      {/* Row 1: Primary Engine Controls, Gizmo Tools, Camera & Sky, Export */}
+      {/* Row 1: Playtest, Gizmo + Grid Snap, Camera, Sky, Audio, Templates & Export */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0d121d] px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex items-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
             <Gamepad2 className="h-4 w-4" />
-            <span>Alpemox Game v2 ★</span>
+            <span>Alpemox Game v3 ★</span>
           </div>
 
           {!isPlaying ? (
@@ -1805,13 +1437,13 @@ export const GameEngineEditor: React.FC = () => {
           <button
             type="button"
             onClick={() => (isPlaying ? startPlaytest() : rebuildSceneObjects())}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            title="Sıfırla"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            Sıfırla
           </button>
 
-          {/* Transform Gizmo Mode Switcher (PlayCanvas / Godot style) */}
+          {/* Transform Gizmo Mode Switcher */}
           <div className="flex items-center rounded-lg border border-white/10 bg-slate-900/90 p-0.5">
             {(
               [
@@ -1838,8 +1470,24 @@ export const GameEngineEditor: React.FC = () => {
             ))}
           </div>
 
-          {/* Camera Perspective Selector */}
-          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
+          {/* Grid Snap Toggle */}
+          <button
+            type="button"
+            data-testid="grid-snap-btn"
+            onClick={() => setSnapSize((s) => (s === 0 ? 0.5 : s === 0.5 ? 1 : 0))}
+            disabled={isPlaying}
+            className={`rounded-lg border px-2 py-1 text-[11px] font-medium ${
+              snapSize > 0
+                ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
+                : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Gizmo Izgara Kilidi (Snap)"
+          >
+            Snap: {snapSize > 0 ? `${snapSize}m` : 'Kapalı'}
+          </button>
+
+          {/* Camera & Sky */}
+          <label className="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
             <Camera className="h-3.5 w-3.5 text-sky-400" />
             <select
               data-testid="camera-mode-select"
@@ -1851,16 +1499,15 @@ export const GameEngineEditor: React.FC = () => {
                 3. Şahıs (TPS)
               </option>
               <option value="topdown" className="bg-slate-900">
-                Kuşbakışı (Top-Down)
+                Kuşbakışı
               </option>
               <option value="fps" className="bg-slate-900">
-                Birinci Şahıs (FPS)
+                FPS Kamera
               </option>
             </select>
           </label>
 
-          {/* Sky / Lighting Selector */}
-          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
+          <label className="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">
             <Sun className="h-3.5 w-3.5 text-amber-400" />
             <select
               data-testid="sky-theme-select"
@@ -1875,6 +1522,30 @@ export const GameEngineEditor: React.FC = () => {
               ))}
             </select>
           </label>
+
+          {/* Synth Music & Mute */}
+          <button
+            type="button"
+            data-testid="music-toggle-btn"
+            onClick={() => setMusicEnabled((v) => !v)}
+            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
+              musicEnabled
+                ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+                : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Playtest Synth Müzik"
+          >
+            <Music className="h-3 w-3" /> Müzik
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSfxMuted((v) => !v)}
+            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
+            title={sfxMuted ? 'Sesi Aç' : 'Sesi Kapat'}
+          >
+            {sfxMuted ? <VolumeX className="h-3.5 w-3.5 text-rose-400" /> : <Volume2 className="h-3.5 w-3.5 text-sky-300" />}
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1882,7 +1553,7 @@ export const GameEngineEditor: React.FC = () => {
             type="button"
             onClick={() => handleLoadTemplate('platformer')}
             data-testid="template-platformer-btn"
-            className="flex items-center gap-1 rounded-lg border border-sky-400/30 bg-sky-500/10 px-2.5 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20"
+            className="flex items-center gap-1 rounded-lg border border-sky-400/30 bg-sky-500/10 px-2 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20"
           >
             <Sparkles className="h-3.5 w-3.5" />
             Obby Parkur
@@ -1891,7 +1562,7 @@ export const GameEngineEditor: React.FC = () => {
             type="button"
             onClick={() => handleLoadTemplate('arena')}
             data-testid="template-arena-btn"
-            className="flex items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20"
+            className="flex items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20"
           >
             <Trophy className="h-3.5 w-3.5" />
             Savaş Arenası
@@ -1900,16 +1571,25 @@ export const GameEngineEditor: React.FC = () => {
             type="button"
             onClick={() => handleLoadTemplate('tower')}
             data-testid="template-tower-btn"
-            className="flex items-center gap-1 rounded-lg border border-lime-400/30 bg-lime-500/10 px-2.5 py-1.5 text-xs font-medium text-lime-200 hover:bg-lime-500/20"
+            className="flex items-center gap-1 rounded-lg border border-lime-400/30 bg-lime-500/10 px-2 py-1.5 text-xs font-medium text-lime-200 hover:bg-lime-500/20"
           >
             <Zap className="h-3.5 w-3.5" />
             Dikey Kule
+          </button>
+          <button
+            type="button"
+            onClick={() => handleLoadTemplate('space')}
+            data-testid="template-space-btn"
+            className="flex items-center gap-1 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/20"
+          >
+            <Rocket className="h-3.5 w-3.5" />
+            Uzay İstasyonu
           </button>
 
           <button
             type="button"
             onClick={() => setViewportMode('3d')}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10"
+            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-slate-300 hover:bg-white/10"
           >
             <Layers className="h-3.5 w-3.5" />
             3D Stage
@@ -1927,9 +1607,9 @@ export const GameEngineEditor: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 2: Prompt-to-3D-Game Generator + Quick Entity Palette */}
+      {/* Row 2: Prompt-to-3D Generator + Quick Palette + Save/Load Level */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0a0e17] px-3 py-2">
-        <div className="flex flex-1 min-w-[280px] max-w-2xl items-center gap-1.5">
+        <div className="flex flex-1 min-w-[260px] max-w-xl items-center gap-1.5">
           <div className="flex flex-1 items-center gap-2 rounded-lg border border-purple-400/30 bg-slate-900/90 px-2.5 py-1">
             <Wand2 className="h-3.5 w-3.5 shrink-0 text-purple-400" />
             <input
@@ -1940,7 +1620,7 @@ export const GameEngineEditor: React.FC = () => {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleAiGenerateLevel();
               }}
-              placeholder="Örn: 6 altın, trambolin, hareketli platform ve 2 devriye botlu kule..."
+              placeholder="Örn: 6 altın, trambolin, hareketli platform ve 2 takipçi botlu kule..."
               className="w-full bg-transparent text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none"
             />
           </div>
@@ -1948,72 +1628,96 @@ export const GameEngineEditor: React.FC = () => {
             type="button"
             data-testid="ai-generate-level-btn"
             onClick={handleAiGenerateLevel}
-            className="shrink-0 rounded-lg bg-purple-500/20 border border-purple-400/40 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/30 transition"
+            className="shrink-0 rounded-lg bg-purple-500/20 border border-purple-400/40 px-2.5 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/30 transition"
           >
             Prompt’tan 3D Seviye Üret
           </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
-          <button type="button" onClick={() => handleQuickAdd('player')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
+          <button type="button" onClick={() => handleQuickAdd('player')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
             <User className="h-3 w-3 text-sky-400" /> +Oyuncu
           </button>
-          <button type="button" onClick={() => handleQuickAdd('solid')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
-            <Box className="h-3 w-3 text-slate-300" /> +Platform
+          <button type="button" onClick={() => handleQuickAdd('solid')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
+            <Box className="h-3 w-3 text-slate-300" /> +Zemin
           </button>
-          <button type="button" onClick={() => handleQuickAdd('moving')} className="flex items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-500/20">
+          <button type="button" onClick={() => handleQuickAdd('moving')} className="flex items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-1 text-[11px] text-cyan-200 hover:bg-cyan-500/20">
             <Move className="h-3 w-3" /> +Hareketli
           </button>
-          <button type="button" onClick={() => handleQuickAdd('bounce')} className="flex items-center gap-1 rounded border border-lime-400/30 bg-lime-500/10 px-2 py-1 text-[11px] text-lime-200 hover:bg-lime-500/20">
+          <button type="button" onClick={() => handleQuickAdd('bounce')} className="flex items-center gap-1 rounded border border-lime-400/30 bg-lime-500/10 px-1.5 py-1 text-[11px] text-lime-200 hover:bg-lime-500/20">
             <Zap className="h-3 w-3" /> +Trambolin
           </button>
-          <button type="button" onClick={() => handleQuickAdd('collectible')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
+          <button type="button" onClick={() => handleQuickAdd('powerup')} className="flex items-center gap-1 rounded border border-indigo-400/30 bg-indigo-500/10 px-1.5 py-1 text-[11px] text-indigo-200 hover:bg-indigo-500/20">
+            <Magnet className="h-3 w-3" /> +Güç
+          </button>
+          <button type="button" onClick={() => handleQuickAdd('collectible')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
             <Coins className="h-3 w-3 text-amber-400" /> +Altın
           </button>
-          <button type="button" onClick={() => handleQuickAdd('checkpoint')} className="flex items-center gap-1 rounded border border-teal-400/30 bg-teal-500/10 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/20">
+          <button type="button" onClick={() => handleQuickAdd('checkpoint')} className="flex items-center gap-1 rounded border border-teal-400/30 bg-teal-500/10 px-1.5 py-1 text-[11px] text-teal-200 hover:bg-teal-500/20">
             <CheckCircle2 className="h-3 w-3" /> +Kayıt
           </button>
-          <button type="button" onClick={() => handleQuickAdd('hazard')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
+          <button type="button" onClick={() => handleQuickAdd('hazard')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
             <AlertTriangle className="h-3 w-3 text-rose-400" /> +Engel
           </button>
-          <button type="button" onClick={() => handleQuickAdd('npc')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
-            <Bot className="h-3 w-3 text-purple-400" /> +NPC
+          <button type="button" onClick={() => handleQuickAdd('npc')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
+            <Bot className="h-3 w-3 text-purple-400" /> +Bot
           </button>
-          <button type="button" onClick={() => handleQuickAdd('goal')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] hover:bg-white/10">
+          <button type="button" onClick={() => handleQuickAdd('goal')} className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[11px] hover:bg-white/10">
             <Flag className="h-3 w-3 text-emerald-400" /> +Portal
           </button>
+
+          <button
+            type="button"
+            onClick={handleExportLevelJson}
+            className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+            title="Seviyeyi JSON Kaydet"
+          >
+            .JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => levelFileInputRef.current?.click()}
+            className="flex items-center gap-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+            title="Seviye JSON Yükle"
+          >
+            <Upload className="h-3 w-3" />
+          </button>
+          <input
+            ref={levelFileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportLevelJson}
+          />
         </div>
       </div>
 
-      {/* Main Split: 3D Engine Viewport + Right Entities/Rules Sidebar */}
+      {/* Main Split */}
       <div className="flex flex-1 min-h-0">
         <div className="relative flex-1 min-w-0 bg-[#070a10]">
           <div ref={canvasHostRef} className="h-full w-full" />
 
-          {/* Live Game HUD */}
+          {/* Live HUD + FPS Telemetry */}
           <div
             data-testid="game-hud"
-            className="pointer-events-none absolute top-4 left-4 flex flex-wrap items-center gap-3 rounded-xl border border-white/15 bg-slate-950/80 px-4 py-2 text-xs backdrop-blur-md shadow-xl"
+            className="pointer-events-none absolute top-4 left-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-white/15 bg-slate-950/82 px-3.5 py-2 text-xs backdrop-blur-md shadow-xl"
           >
-            <div className="flex items-center gap-1.5 text-sky-300 font-semibold">
+            <div className="flex items-center gap-1 text-sky-300 font-semibold">
               <Trophy className="h-3.5 w-3.5" />
-              <span>Skor:</span>
               <span className="font-mono text-sm text-white" data-testid="hud-score">
                 {hud.score}
               </span>
             </div>
             <div className="h-3.5 w-px bg-white/15" />
-            <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+            <div className="flex items-center gap-1 text-amber-300 font-semibold">
               <Coins className="h-3.5 w-3.5" />
-              <span>Altın:</span>
               <span className="font-mono text-sm text-white" data-testid="hud-coins">
                 {hud.coins}/{hud.totalCoins}
               </span>
             </div>
             <div className="h-3.5 w-px bg-white/15" />
-            <div className="flex items-center gap-1.5 text-rose-300 font-semibold">
+            <div className="flex items-center gap-1 text-rose-300 font-semibold">
               <Heart className="h-3.5 w-3.5 fill-rose-400/50" />
-              <span>Can:</span>
               <span className="font-mono text-sm text-white" data-testid="hud-hp">
                 {hud.hp}
               </span>
@@ -2022,6 +1726,14 @@ export const GameEngineEditor: React.FC = () => {
             <div className="text-slate-300 font-mono" data-testid="hud-time">
               {hud.elapsed.toFixed(1)}s
             </div>
+            <div className="text-[10px] font-mono text-emerald-400" data-testid="hud-fps">
+              {hud.fps} FPS
+            </div>
+            {hud.shieldActive && (
+              <span className="flex items-center gap-1 rounded-full bg-indigo-500/25 border border-indigo-400/50 px-2 py-0.5 text-[10px] font-bold text-indigo-200">
+                <Shield className="h-3 w-3" /> KALKAN + MIKNATIS
+              </span>
+            )}
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
                 isPlaying
@@ -2033,10 +1745,15 @@ export const GameEngineEditor: React.FC = () => {
             </span>
           </div>
 
-          {statusNotice && (
-            <div className="pointer-events-none absolute top-4 right-4 max-w-sm rounded-xl border border-sky-400/30 bg-slate-900/90 px-3.5 py-2 text-xs text-sky-200 shadow-lg backdrop-blur">
-              {statusNotice}
-            </div>
+          {/* 2D Live Radar Mini-Map during Playtest */}
+          {isPlaying && (
+            <canvas
+              ref={radarCanvasRef}
+              data-testid="game-radar"
+              width={96}
+              height={96}
+              className="pointer-events-none absolute bottom-20 right-4 rounded-xl border border-sky-400/35 bg-slate-950/80 shadow-xl backdrop-blur"
+            />
           )}
 
           {isPlaying && (
@@ -2045,7 +1762,19 @@ export const GameEngineEditor: React.FC = () => {
             </div>
           )}
 
-          {/* On-Screen Controls during Playtest (D-Pad + Jump + Dash + Shoot) */}
+          {actionPopup && (
+            <div className="pointer-events-none absolute top-24 left-4 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-200 shadow-lg backdrop-blur">
+              {actionPopup}
+            </div>
+          )}
+
+          {statusNotice && !isPlaying && (
+            <div className="pointer-events-none absolute top-4 right-4 max-w-sm rounded-xl border border-sky-400/30 bg-slate-900/90 px-3.5 py-2 text-xs text-sky-200 shadow-lg backdrop-blur">
+              {statusNotice}
+            </div>
+          )}
+
+          {/* On-Screen Playtest Controls */}
           {isPlaying && hud.outcome === 'playing' && (
             <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-end justify-between gap-2 pointer-events-none">
               <div className="pointer-events-auto grid grid-cols-3 gap-1 rounded-2xl border border-white/15 bg-slate-950/75 p-1.5 backdrop-blur">
@@ -2175,7 +1904,7 @@ export const GameEngineEditor: React.FC = () => {
           )}
         </div>
 
-        {/* Right Side: Tabbed Entities + Visual Event Rules Inspector */}
+        {/* Right Side: Entities & Visual Event Rules Inspector */}
         <aside className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-[#0b0f18]">
           <div className="grid grid-cols-2 border-b border-white/10 bg-[#0d121d] p-1.5 gap-1">
             <button
@@ -2228,7 +1957,11 @@ export const GameEngineEditor: React.FC = () => {
                           <span className={`inline-block rounded border px-1.5 py-0.2 text-[10px] ${meta.badge}`}>
                             {meta.label}
                           </span>
-                          <span className="text-[10px] text-slate-500">{obj.kind}</span>
+                          {role === 'npc' && obj.npcBehavior && (
+                            <span className="text-[10px] uppercase text-purple-300">
+                              {obj.npcBehavior}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <span
@@ -2241,10 +1974,27 @@ export const GameEngineEditor: React.FC = () => {
               </div>
 
               {selectedObj && (
-                <div className="border-t border-white/10 bg-[#0d121d] p-3.5 space-y-2.5">
+                <div className="border-t border-white/10 bg-[#0d121d] p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white truncate">{selectedObj.name}</span>
                     <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleFocusSelected}
+                        className="rounded p-1 text-cyan-400 hover:bg-cyan-500/15"
+                        title="Kamerayı Odakla"
+                      >
+                        <Focus className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="duplicate-entity-btn"
+                        onClick={handleDuplicateSelected}
+                        className="rounded p-1 text-amber-400 hover:bg-amber-500/15"
+                        title="Varlığı Çoğalt"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleQuickAdd(inferRole(selectedObj))}
@@ -2280,6 +2030,26 @@ export const GameEngineEditor: React.FC = () => {
                       ))}
                     </select>
                   </label>
+
+                  {inferRole(selectedObj) === 'npc' && (
+                    <label className="block space-y-1">
+                      <span className="text-[11px] text-slate-400">Bot Yapay Zeka Modu (AI)</span>
+                      <select
+                        data-testid="npc-behavior-select"
+                        value={selectedObj.npcBehavior ?? 'patrol'}
+                        onChange={(e) =>
+                          update3DObject(selectedObj.id, {
+                            npcBehavior: e.target.value as 'patrol' | 'chase' | 'turret',
+                          })
+                        }
+                        className="w-full rounded-lg border border-purple-400/30 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100"
+                      >
+                        <option value="patrol">Devriye Gez (Patrol)</option>
+                        <option value="chase">Oyuncuyu Takip Et (Chase AI)</option>
+                        <option value="turret">Ateş Eden Taret (Turret)</option>
+                      </select>
+                    </label>
+                  )}
 
                   <div className="grid grid-cols-3 gap-1.5">
                     {(['x', 'y', 'z'] as const).map((axis) => (
@@ -2428,7 +2198,7 @@ export const GameEngineEditor: React.FC = () => {
                   [
                     'shooterEnabled',
                     'F / ATEŞ → Enerji Topu Fırlat',
-                    'NPC düşmanları vurarak +150 skorla yok eder.',
+                    'Takipçi ve Taret botları vurarak +150 skorla yok eder.',
                   ],
                   [
                     'requireAllCoins',
