@@ -1,5 +1,15 @@
 export type ViewportMode = 'hybrid' | 'photo' | 'vector' | 'film' | '3d' | 'game' | 'moodboard' | 'pipeline';
-export type GameRole = 'player' | 'solid' | 'collectible' | 'hazard' | 'goal' | 'npc' | 'decor';
+export type GameRole =
+  | 'player'
+  | 'solid'
+  | 'moving'
+  | 'bounce'
+  | 'collectible'
+  | 'hazard'
+  | 'checkpoint'
+  | 'goal'
+  | 'npc'
+  | 'decor';
 export type StageRenderMode = 'lit' | 'depth' | 'normal' | 'wireframe';
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay';
 export type PlanTier = 'free' | 'pro';
@@ -120,6 +130,8 @@ export interface StageObject3D {
   moveSpeed?: number;
   jumpForce?: number;
   patrolRange?: number;
+  bounceForce?: number;
+  patrolAxis?: 'x' | 'y' | 'z';
 }
 
 export interface StageLightingState {
@@ -587,13 +599,17 @@ export const ALPEMOX_SUITE_APPS: SuiteAppSpec[] = [
   {
     id: 'alpemox-game',
     name: 'Alpemox Game',
-    tagline: '★ Yıldız Modül · 3D Oyun Motoru & Web Export',
+    tagline: '★ Yıldız Modül · 3D Oyun Motoru, AI Seviye & Web Export',
     category: 'Game Engine',
     mode: 'game',
-    badge: '★ Star Engine · Physics + Playtest',
+    badge: '★ Star Engine v2 · Gizmo + AI + Rules',
     description:
-      '3D Stage ve AI varlıklarını anında oynanabilir 3D oyuna çevirir: WASD + Zıplama fiziği, platform çarpışması, dönen altınlar, devriye NPC, WebAudio SFX ve tek dosya .HTML oyun dışa aktarımı.',
-    highlights: ['Canlı Playtest (WASD + Fizik + Çarpışma)', 'Tek Tık Platformer & Arena Şablonları', 'Oynanabilir Tek Dosya .HTML Oyun Export'],
+      'Gizmo editör (Taşı/Döndür/Ölçekle), Prompt → 3D Oyun üretici, hareketli platformlar, trambolin, checkpoint, 2x zıplama, Shift Dash, enerji ateşi, TPS/Top-Down/FPS kamera, 3D partiküller ve tek dosya .HTML oyun ihracı.',
+    highlights: [
+      'Transform Gizmo + Prompt → 3D Seviye Üretici',
+      'Hareketli Platform, Trambolin, Checkpoint, FPS/TPS Kamera & Enerji Ateşi',
+      'Görsel Olay Kuralları, Partikül FX & Tek Dosya .HTML Export',
+    ],
     platforms: ['macOS', 'Windows', 'Linux', 'Web'],
   },
   {
