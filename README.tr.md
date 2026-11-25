@@ -22,13 +22,15 @@ Mimari yaklaşımı [ArtCraft](https://github.com/storytold/artcraft) (MIT / Apa
 
 ## ✨ Ekran Görüntüleri
 
-| Web Sitesi | Suite Launcher |
+| ★ Alpemox Game (3D Oyun Motoru + Claude MCP) | Suite Launcher (8 Uygulama) |
 | :---: | :---: |
-| ![Website](docs/screenshots/website.png) | ![Launcher](docs/screenshots/launcher.png) |
-| **3D Sahne (PBR + Gizmo)** | **Photo + 4-Açı Turnaround Grid** |
-| ![3D Stage](docs/screenshots/stage3d.png) | ![Photo](docs/screenshots/photo.png) |
-| **Vektör (Bezier, Poligon, Animasyonlu SVG)** | **Film (Çok Kanallı Timeline + Synth Ses)** |
-| ![Vector](docs/screenshots/vector.png) | ![Film](docs/screenshots/film.png) |
+| ![Alpemox Game](docs/screenshots/game.png) | ![Launcher](docs/screenshots/launcher.png) |
+| **Web Sitesi** | **3D Sahne (PBR + Gizmo)** |
+| ![Website](docs/screenshots/website.png) | ![3D Stage](docs/screenshots/stage3d.png) |
+| **Photo + 4-Açı Turnaround Grid** | **Vektör (Bezier, Poligon, Animasyonlu SVG)** |
+| ![Photo](docs/screenshots/photo.png) | ![Vector](docs/screenshots/vector.png) |
+| **Film (Çok Kanallı Timeline + Synth Ses)** | — |
+| ![Film](docs/screenshots/film.png) | |
 
 ## 🚀 Hızlı Başlangıç
 

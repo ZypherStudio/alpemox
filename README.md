@@ -31,32 +31,38 @@ Inspired architecturally by [ArtCraft](https://github.com/storytold/artcraft) (M
 <table>
   <tr>
     <td width="50%">
-      <strong>Alpemox Website & Suite Dock</strong><br/>
-      <img src="docs/screenshots/website.png" alt="Alpemox Website Hero" />
+      <strong>★ Alpemox Game Engine (3D Playtest + Claude MCP + .HTML Export)</strong><br/>
+      <img src="docs/screenshots/game.png" alt="Alpemox Game Engine" />
     </td>
     <td width="50%">
-      <strong>Unified Suite Launcher</strong><br/>
+      <strong>Unified Suite Launcher (8 Apps)</strong><br/>
       <img src="docs/screenshots/launcher.png" alt="Alpemox Suite Launcher" />
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <strong>3D Stage (PBR + Gizmo + Mannequin)</strong><br/>
-      <img src="docs/screenshots/stage3d.png" alt="Alpemox 3D Stage" />
+      <strong>Alpemox Website & Suite Dock</strong><br/>
+      <img src="docs/screenshots/website.png" alt="Alpemox Website Hero" />
     </td>
     <td width="50%">
-      <strong>Photo Editor + 3D 4-Angle Turnaround</strong><br/>
-      <img src="docs/screenshots/photo.png" alt="Alpemox Photo Editor" />
+      <strong>3D Stage (PBR + Gizmo + Mannequin)</strong><br/>
+      <img src="docs/screenshots/stage3d.png" alt="Alpemox 3D Stage" />
     </td>
   </tr>
   <tr>
     <td width="50%">
+      <strong>Photo Editor + 3D 4-Angle Turnaround</strong><br/>
+      <img src="docs/screenshots/photo.png" alt="Alpemox Photo Editor" />
+    </td>
+    <td width="50%">
       <strong>Vector Editor (Bezier, Polygon, CSS Motion SVG)</strong><br/>
       <img src="docs/screenshots/vector.png" alt="Alpemox Vector Editor" />
     </td>
-    <td width="50%">
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
       <strong>Film Editor (Multi-track Timeline + Motion + Synth)</strong><br/>
-      <img src="docs/screenshots/film.png" alt="Alpemox Film Editor" />
+      <img src="docs/screenshots/film.png" alt="Alpemox Film Editor" width="520" />
     </td>
   </tr>
 </table>

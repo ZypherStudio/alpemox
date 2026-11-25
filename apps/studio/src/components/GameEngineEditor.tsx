@@ -37,6 +37,7 @@ import {
   Terminal,
   Trash2,
   Trophy,
+  Undo2,
   Upload,
   Wand2,
   Zap,
@@ -57,7 +58,7 @@ import {
   type SkyThemeId,
 } from './game/gameTemplates';
 
-function buildMeshForObject(obj: StageObject3D): THREE.Group {
+function buildMeshForObject(obj: StageObject3D, showColliders = false): THREE.Group {
   const group = new THREE.Group();
   group.userData.objectId = obj.id;
   const role = inferRole(obj);
@@ -188,6 +189,17 @@ function buildMeshForObject(obj: StageObject3D): THREE.Group {
     group.add(ring);
   }
 
+  if (showColliders) {
+    const wire = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.04, 1.04, 1.04)),
+      new THREE.LineBasicMaterial({
+        color: role === 'hazard' ? '#f43f5e' : role === 'bounce' ? '#84cc16' : '#38bdf8',
+      }),
+    );
+    if (role === 'player') wire.position.y = 0.85;
+    group.add(wire);
+  }
+
   group.position.set(obj.position.x, obj.position.y, obj.position.z);
   group.rotation.set(
     THREE.MathUtils.degToRad(obj.rotation.x),
@@ -249,6 +261,17 @@ export const GameEngineEditor: React.FC = () => {
 
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [sfxMuted, setSfxMuted] = useState(false);
+  const [showColliders, setShowColliders] = useState(false);
+  const [timeScale, setTimeScale] = useState<number>(1);
+  const [bestScore, setBestScore] = useState<number>(() => {
+    try {
+      return Number(window.localStorage.getItem('alpemox-game-best-score') || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const [undoCount, setUndoCount] = useState(0);
+  const undoStackRef = useRef<StageObject3D[][]>([]);
   const [actionPopup, setActionPopup] = useState<string | null>(null);
   const popupTimerRef = useRef<number | null>(null);
 
@@ -294,6 +317,10 @@ export const GameEngineEditor: React.FC = () => {
   rulesRef.current = rules;
   const sfxMutedRef = useRef<boolean>(sfxMuted);
   sfxMutedRef.current = sfxMuted;
+  const showCollidersRef = useRef<boolean>(showColliders);
+  showCollidersRef.current = showColliders;
+  const timeScaleRef = useRef<number>(timeScale);
+  timeScaleRef.current = timeScale;
   const aiConfigRef = useRef<GameAiConfig>(aiConfig);
   aiConfigRef.current = aiConfig;
 
@@ -312,6 +339,8 @@ export const GameEngineEditor: React.FC = () => {
     hp: 3,
     elapsed: 0,
     fps: 60,
+    combo: 0,
+    comboTimer: 0,
     shieldTimer: 0,
     outcome: 'idle' as 'idle' | 'playing' | 'won' | 'lost',
     vy: 0,
@@ -342,6 +371,7 @@ export const GameEngineEditor: React.FC = () => {
     hp: 3,
     elapsed: 0,
     fps: 60,
+    combo: 0,
     shieldActive: false,
     outcome: 'idle' as 'idle' | 'playing' | 'won' | 'lost',
   });
@@ -350,6 +380,27 @@ export const GameEngineEditor: React.FC = () => {
   const objects3d = project.objects3d;
   const objectsRef = useRef<StageObject3D[]>(objects3d);
   objectsRef.current = objects3d;
+
+  const pushHistory = useCallback(() => {
+    const snap = objectsRef.current.map((o) => ({
+      ...o,
+      position: { ...o.position },
+      rotation: { ...o.rotation },
+      scale: { ...o.scale },
+    }));
+    undoStackRef.current = [...undoStackRef.current.slice(-19), snap];
+    setUndoCount(undoStackRef.current.length);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (playStateRef.current.playing) return;
+    const prev = undoStackRef.current.pop();
+    setUndoCount(undoStackRef.current.length);
+    if (prev) {
+      replace3DObjects(prev);
+      setStatusNotice('Son sahne değişikliği geri alındı (Undo).');
+    }
+  }, [replace3DObjects]);
 
   const selectedObj = useMemo(
     () => objects3d.find((o) => o.id === selectedObject3DId) ?? objects3d[0] ?? null,
@@ -438,7 +489,7 @@ export const GameEngineEditor: React.FC = () => {
 
     for (const obj of objectsRef.current) {
       if (!obj.visible) continue;
-      const grp = buildMeshForObject(obj);
+      const grp = buildMeshForObject(obj, showCollidersRef.current);
       scene.add(grp);
       meshMapRef.current.set(obj.id, grp);
     }
@@ -571,6 +622,21 @@ export const GameEngineEditor: React.FC = () => {
     scene.add(grid);
     lightsRef.current = { ambient, dir: dirLight, grid };
 
+    // 3D Starfield for depth atmosphere
+    const starPositions = new Float32Array(420 * 3);
+    for (let i = 0; i < 420; i++) {
+      starPositions[i * 3] = (Math.random() - 0.5) * 140;
+      starPositions[i * 3 + 1] = Math.random() * 60 + 2;
+      starPositions[i * 3 + 2] = (Math.random() - 0.5) * 140;
+    }
+    const starGeom = new THREE.BufferGeometry();
+    starGeom.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starField = new THREE.Points(
+      starGeom,
+      new THREE.PointsMaterial({ color: '#bae6fd', size: 0.28, transparent: true, opacity: 0.72 }),
+    );
+    scene.add(starField);
+
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let downX = 0;
@@ -618,8 +684,11 @@ export const GameEngineEditor: React.FC = () => {
 
     const animate = (now: number) => {
       rafId = requestAnimationFrame(animate);
-      const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+      const rawDt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+      const dt = rawDt * timeScaleRef.current;
       lastTime = now;
+
+      starField.rotation.y += rawDt * 0.015;
 
       frameCount += 1;
       if (now - fpsClock >= 450) {
@@ -654,6 +723,10 @@ export const GameEngineEditor: React.FC = () => {
 
       if (ps.playing && ps.outcome === 'playing') {
         ps.elapsed += dt;
+        if (ps.comboTimer > 0) {
+          ps.comboTimer -= dt;
+          if (ps.comboTimer <= 0) ps.combo = 0;
+        }
         if (ps.dashTimer > 0) ps.dashTimer -= dt;
         if (ps.dashCd > 0) ps.dashCd -= dt;
         if (ps.shootCd > 0) ps.shootCd -= dt;
@@ -920,10 +993,13 @@ export const GameEngineEditor: React.FC = () => {
               ps.collectedIds.add(obj.id);
               grp.visible = false;
               ps.coins += 1;
-              ps.score += 100;
+              ps.combo = ps.comboTimer > 0 ? Math.min(5, ps.combo + 1) : 1;
+              ps.comboTimer = 3.2;
+              const pts = 100 * ps.combo;
+              ps.score += pts;
               spawnParticleBurst(grp.position, '#fbbf24', 12);
               playGameSfx('coin', sfxMutedRef.current);
-              triggerPopup('+100 ALTIN!');
+              triggerPopup(ps.combo > 1 ? `COMBO x${ps.combo}! +${pts}` : '+100 ALTIN!');
             }
           }
 
@@ -972,6 +1048,15 @@ export const GameEngineEditor: React.FC = () => {
               if (!curRules.requireAllCoins || ps.coins >= ps.totalCoins) {
                 ps.outcome = 'won';
                 ps.score += 500;
+                setBestScore((prev) => {
+                  const next = Math.max(prev, ps.score);
+                  try {
+                    window.localStorage.setItem('alpemox-game-best-score', String(next));
+                  } catch {
+                    // ignore storage quota
+                  }
+                  return next;
+                });
                 spawnParticleBurst(grp.position, '#10b981', 22);
                 playGameSfx('win', sfxMutedRef.current);
               }
@@ -1056,6 +1141,7 @@ export const GameEngineEditor: React.FC = () => {
             hp: ps.hp,
             elapsed: ps.elapsed,
             fps: ps.fps,
+            combo: ps.combo,
             shieldActive: ps.shieldTimer > 0,
             outcome: ps.outcome,
           });
@@ -1089,7 +1175,7 @@ export const GameEngineEditor: React.FC = () => {
 
   useEffect(() => {
     if (!isPlaying) rebuildSceneObjects();
-  }, [objects3d, isPlaying, rebuildSceneObjects]);
+  }, [objects3d, isPlaying, showColliders, rebuildSceneObjects]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1098,7 +1184,10 @@ export const GameEngineEditor: React.FC = () => {
         return;
       }
       if (!playStateRef.current.playing) {
-        if (e.code === 'KeyT') setGizmoMode('translate');
+        if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
+          e.preventDefault();
+          handleUndo();
+        } else if (e.code === 'KeyT') setGizmoMode('translate');
         else if (e.code === 'KeyR') setGizmoMode('rotate');
         else if (e.code === 'KeyS' && e.shiftKey) setGizmoMode('scale');
         return;
@@ -1121,7 +1210,7 @@ export const GameEngineEditor: React.FC = () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [fireProjectile, triggerDash]);
+  }, [fireProjectile, handleUndo, triggerDash]);
 
   const stopPlaytest = useCallback(() => {
     playStateRef.current.playing = false;
@@ -1170,6 +1259,8 @@ export const GameEngineEditor: React.FC = () => {
       hp: 3,
       elapsed: 0,
       fps: playStateRef.current.fps,
+      combo: 0,
+      comboTimer: 0,
       shieldTimer: 0,
       outcome: 'playing',
       vy: 0,
@@ -1200,6 +1291,7 @@ export const GameEngineEditor: React.FC = () => {
       hp: 3,
       elapsed: 0,
       fps: playStateRef.current.fps,
+      combo: 0,
       shieldActive: false,
       outcome: 'playing',
     });
@@ -1256,6 +1348,7 @@ export const GameEngineEditor: React.FC = () => {
   const handleLoadTemplate = (kind: 'platformer' | 'arena' | 'tower' | 'space') => {
     setOpenMenu(null);
     if (isPlaying) stopPlaytest();
+    pushHistory();
     const items = makeTemplate(kind);
     replace3DObjects(items);
     setSelectedObject3DId(items[0]?.id ?? null);
@@ -1265,6 +1358,7 @@ export const GameEngineEditor: React.FC = () => {
 
   const handleAiGenerateLevel = async () => {
     if (isPlaying) stopPlaytest();
+    pushHistory();
     setAiBusy(true);
     try {
       const aiRes = await callGameAi('level', aiPrompt, aiConfig);
@@ -1334,6 +1428,7 @@ export const GameEngineEditor: React.FC = () => {
 
   const handleDuplicateSelected = () => {
     if (!selectedObj || isPlaying) return;
+    pushHistory();
     add3DObject(selectedObj.kind, {
       name: `${selectedObj.name} Kopya`,
       gameRole: inferRole(selectedObj),
@@ -1581,6 +1676,17 @@ export const GameEngineEditor: React.FC = () => {
 
           <button
             type="button"
+            data-testid="undo-btn"
+            disabled={isPlaying || undoCount === 0}
+            onClick={handleUndo}
+            className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-35"
+            title={`Geri Al (Ctrl+Z) · ${undoCount}`}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => (isPlaying ? startPlaytest() : rebuildSceneObjects())}
             className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
             title="Sahneyi Sıfırla"
@@ -1770,6 +1876,37 @@ export const GameEngineEditor: React.FC = () => {
                   </button>
                 </div>
 
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-300">Oyun Hızı</span>
+                  <div className="flex gap-1">
+                    {[0.5, 1, 1.5].map((spd) => (
+                      <button
+                        key={spd}
+                        type="button"
+                        onClick={() => setTimeScale(spd)}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                          timeScale === spd
+                            ? 'border-sky-400/50 bg-sky-500/20 text-sky-200'
+                            : 'border-white/10 bg-white/5 text-slate-400'
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-slate-300">Hitbox / Kolider Göster</span>
+                  <input
+                    type="checkbox"
+                    data-testid="show-colliders-checkbox"
+                    checked={showColliders}
+                    onChange={(e) => setShowColliders(e.target.checked)}
+                    className="accent-sky-400"
+                  />
+                </label>
+
                 <label className="flex items-center justify-between cursor-pointer">
                   <span className="text-slate-300">Chiptune Müzik</span>
                   <input
@@ -1855,6 +1992,16 @@ export const GameEngineEditor: React.FC = () => {
             <div className="text-[10px] font-mono text-emerald-400" data-testid="hud-fps">
               {hud.fps} FPS
             </div>
+            {bestScore > 0 && (
+              <div className="text-[10px] font-mono text-amber-300" data-testid="hud-best-score">
+                Rekor: {bestScore}
+              </div>
+            )}
+            {hud.combo > 1 && (
+              <span className="rounded-full bg-amber-500/25 border border-amber-400/50 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+                COMBO x{hud.combo}
+              </span>
+            )}
             {hud.shieldActive && (
               <span className="flex items-center gap-1 rounded-full bg-indigo-500/25 border border-indigo-400/50 px-2 py-0.5 text-[10px] font-bold text-indigo-200">
                 <Shield className="h-3 w-3" /> KALKAN + MIKNATIS
